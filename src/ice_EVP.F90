@@ -344,6 +344,7 @@ subroutine stress2rhs(ice, partit, mesh)
         !_______________________________________________________________________
         ! if cavity node skip it
         if (ulevels_nod2d(n)>1) cycle
+        !# is there an equivalent ulevels_edge2d that can be used?
 
         !_______________________________________________________________________
         if (inv_areamass(n) > 0._WP) then
@@ -411,6 +412,10 @@ subroutine EVPdynamics(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: a_ice_old, m_ice_old, m_snow_old
 #endif
     real(kind=WP)              , pointer  :: inv_rhowat, rhosno, rhoice
+    !___________________________________________________________________________
+    integer :: dim, halo_dim, elems(2), placement(3)
+    real(kind=WP) :: a_ice_ed, m_ice_ed, m_snow_ed
+    character :: discretization
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -454,6 +459,7 @@ subroutine EVPdynamics(ice, partit, mesh)
                             aice_out=a_ice,                 &
                             vice_out=m_ice,                 &
                             vsno_out=m_snow)
+    !# what/ where is this?
 #endif
 
     !___________________________________________________________________________
@@ -464,9 +470,19 @@ subroutine EVPdynamics(ice, partit, mesh)
     !___________________________________________________________________________
     ! Precompute values that are never changed during the iteration
 
+    discretization = 'c'
+
+    if (discretization == 'c') then
+        dim = myDim_nod2D
+        halo_dim = eDim_nod2D
+    else if (discretization == 'nc') then
+        dim = myDim_edge2D
+        halo_dim = eDim_edge2D
+    end if
+
 !$OMP PARALLEL DO
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    do n=1, myDim_nod2D+eDim_nod2D
+    do n=1, dim + halo_dim
        inv_areamass(n) =0.0_WP
        inv_mass(n)     =0.0_WP
        rhs_a(n)        =0.0_WP
@@ -474,40 +490,77 @@ subroutine EVPdynamics(ice, partit, mesh)
     end do
     !$ACC END PARALLEL LOOP
 !$OMP END PARALLEL DO
+!# ??? why a loop? parallelization?
 
-!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(n)
-    !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    do n=1,myDim_nod2D
-        !_______________________________________________________________________
-        ! if cavity node skip it
-        if (ulevels_nod2d(n)>1) cycle
+    !# ??? inv_mass, inv_areamass are needed on edges
+    !# in nc, tracers are stored on cell centers (element wise)
 
-        !_______________________________________________________________________
-        if ((rhoice*m_ice(n)+rhosno*m_snow(n)) > 1.e-3_WP) then
-            inv_areamass(n) = 1._WP/(area(1,n)*(rhoice*m_ice(n)+rhosno*m_snow(n)))
-        else
-            inv_areamass(n) = 0._WP
-        endif
+    if (discretization=='c') then
+    !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(n)
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+        do n=1,myDim_nod2D
+            !_______________________________________________________________________
+            ! if cavity node skip it
+            if (ulevels_nod2d(n)>1) cycle
 
-        if (a_ice(n) < 0.01_WP) then
-            ! Skip if ice is absent
-            inv_mass(n) = 0._WP
-        else
-            inv_mass(n) = (rhoice*m_ice(n)+rhosno*m_snow(n))/a_ice(n)
-            inv_mass(n) = 1.0_WP/max(inv_mass(n), 9.0_WP)        ! Limit the mass
-                                        ! if it is too small
-        endif
-        rhs_a(n)=0.0_WP       ! these are used as temporal storage here
-        rhs_m(n)=0.0_WP       ! for the contribution due to ssh
-    enddo
-    !$ACC END PARALLEL LOOP
-!$OMP END PARALLEL DO
+            !_______________________________________________________________________
+            if ((rhoice*m_ice(n)+rhosno*m_snow(n)) > 1.e-3_WP) then
+                inv_areamass(n) = 1._WP/(area(1,n)*(rhoice*m_ice(n)+rhosno*m_snow(n)))
+                !# ??? whats the difference between area and a_ice?
+            else
+                inv_areamass(n) = 0._WP
+            endif
+
+            if (a_ice(n) < 0.01_WP) then
+                ! Skip if ice is absent
+                inv_mass(n) = 0._WP
+            else
+                inv_mass(n) = (rhoice*m_ice(n)+rhosno*m_snow(n))/a_ice(n)
+                inv_mass(n) = 1.0_WP/max(inv_mass(n), 9.0_WP)        ! Limit the mass
+                                            ! if it is too small
+            endif
+            rhs_a(n)=0.0_WP       ! these are used as temporal storage here
+            rhs_m(n)=0.0_WP       ! for the contribution due to ssh
+        enddo 
+        !$ACC END PARALLEL LOOP
+    !$OMP END PARALLEL DO
+    else if (discretization=='nc') then
+        do n=1,myDim_edge2D
+            elems = edge_tri(:,n)
+            !# note elems is the two elements adjacent to the edge n
+            !# ??? if (ulevels_edge2d(n)>1) cycle
+
+            a_ice_ed =  0.5_WP*(a_ice(elems(1))  + a_ice(elems(2)))
+            m_ice_ed =  0.5_WP*(m_ice(elems(1))  + m_ice(elems(2)))
+            m_snow_ed = 0.5_WP*(m_snow(elems(1)) + m_snow(elems(2)))
+
+            if ((rhoice*m_ice_ed+rhosno*m_snow_ed) > 1.e-3_WP) then
+                inv_areamass(n) = 1._WP/(a_ice_ed*(rhoice*m_ice_ed+rhosno*m_snow_ed))
+                !# ??? should/ can area be used here instead?
+            else
+                inv_areamass(n) = 0._WP
+            end if
+
+            if (a_ice_ed < 0.01_WP) then
+                ! Skip if ice is absent
+                inv_mass(n) = 0._WP
+            else
+                inv_mass(n) = (rhoice*m_ice_ed+rhosno*m_snow_ed)/a_ice_ed
+                inv_mass(n) = 1.0_WP/max(inv_mass(n), 9.0_WP)
+                ! Limit the mass if it is too small
+            end if
+            rhs_a(n)=0.0_WP       ! these are used as temporal storage here
+            rhs_m(n)=0.0_WP       ! for the contribution due to ssh
+        end do
+        !# ??? this loop probably also needs these $OMP $ACC parallelization flags
+    end if
 
     !___________________________________________________________________________
     use_pice=0
     if (use_floatice .and.  .not. trim(which_ale)=='linfs') use_pice=1
     if ( .not. trim(which_ALE)=='linfs') then
         ! for full free surface include pressure from ice mass
+    !# ??? what?
 
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(el, elnodes, msum, asum, aa, p_ice, elevation_elem, elevation_dx, elevation_dy)
 !$OMP DO
@@ -529,12 +582,23 @@ subroutine EVPdynamics(ice, partit, mesh)
 
                 ! There is no ice in elem
                 ice_strength(el) = 0._WP
+                !# ??? isnt this already done 10 lines before?
 
             !___________________________________________________________________
             else
-                msum = sum(m_ice(elnodes))/3.0_WP
-                asum = sum(a_ice(elnodes))/3.0_WP
-
+                if (discretization=='c') then
+                    msum = sum(m_ice(elnodes))/3.0_WP
+                    asum = sum(a_ice(elnodes))/3.0_WP
+                    dx = gradient_sca(1:3,el)
+                    dy = gradient_sca(4:6,el)
+                    placement = elnodes
+                else if (discretization=='nc') then
+                    msum = m_ice(el)
+                    asum = a_ice(el)
+                    dx = gradient_sca(1:3,el) !# ??? use bafuNCx,y
+                    dy = gradient_sca(4:6,el)
+                    placement = elem_edges(:,el)
+                end if
                 !_______________________________________________________________
                 ! Hunke and Dukowicz c*h*p*
 #if defined (__icepack)
@@ -551,27 +615,42 @@ subroutine EVPdynamics(ice, partit, mesh)
                 !_______________________________________________________________
                 ! add and limit pressure from ice weight in case of floating ice
                 ! like in FESOM 1.4
-                p_ice=(rhoice*m_ice(elnodes)+rhosno*m_snow(elnodes))*inv_rhowat
-                do n=1,3
-                    p_ice(n)=min(p_ice(n),max_ice_loading)
-                end do
-                !!PS p_ice= 0.0_WP
+                if (discretization=='c') then
+                    p_ice=(rhoice*m_ice(elnodes)+rhosno*m_snow(elnodes))*inv_rhowat
+                    do n=1,3
+                        p_ice(n)=min(p_ice(n),max_ice_loading)
+                    end do
+                    !!PS p_ice= 0.0_WP
+                else if (discretization=='nc') then
+                    do n=1,3
+                        p_ice(n)=min((rhoice*m_ice(el)+rhosno*m_snow(el)) &
+                                     *inv_rhowat,                         &
+                                     max_ice_loading)
+                    end do
+                    !# ??? is this valid? or does this defeat its purpose
+                    !# in the next lines as it is element wise constant
+                    !# and therefore its gradient is/ should be zero?
+                end if
 
                 !_______________________________________________________________
                 elevation_elem = elevation(elnodes)
-                elevation_dx   = sum(gradient_sca(1:3,el)*(elevation_elem+p_ice*use_pice))
-                elevation_dy   = sum(gradient_sca(4:6,el)*(elevation_elem+p_ice*use_pice))
+                !# ??? why is the elevation also in ice_evp_nc stored on nodes
+                !# and not on cell centers?
+                elevation_dx   = sum(dx*(elevation_elem+p_ice*use_pice))
+                !# ??? is elevation_elem not the sea surface? why is the height
+                !# below the water level added here?
+                elevation_dy   = sum(dy*(elevation_elem+p_ice*use_pice))
 
                 !_______________________________________________________________
                 do k = 1, 3
 #if !defined(DISABLE_OPENACC_ATOMICS)
                     !$ACC ATOMIC UPDATE
 #endif
-                    rhs_a(elnodes(k)) = rhs_a(elnodes(k))-aa*elevation_dx
+                    rhs_a(placement(k)) = rhs_a(placement(k))-aa*elevation_dx
 #if !defined(DISABLE_OPENACC_ATOMICS)
                     !$ACC ATOMIC UPDATE
 #endif
-                    rhs_m(elnodes(k)) = rhs_m(elnodes(k))-aa*elevation_dy
+                    rhs_m(placement(k)) = rhs_m(placement(k))-aa*elevation_dy
                 end do
             end if
         enddo
@@ -603,9 +682,21 @@ subroutine EVPdynamics(ice, partit, mesh)
 
                 ! There is no ice in elem
                 ice_strength(el) = 0._WP
+                !# ??? done already?
             else
-                msum = sum(m_ice(elnodes))/3.0_WP
-                asum = sum(a_ice(elnodes))/3.0_WP
+                if (discretization=='c') then
+                    msum = sum(m_ice(elnodes))/3.0_WP
+                    asum = sum(a_ice(elnodes))/3.0_WP
+                    dx = gradient_sca(1:3,el)
+                    dy = gradient_sca(4:6,el)
+                    placement = elnodes  
+                else if (discretization=='nc') then
+                    msum = m_ice(el)
+                    asum = a_ice(el)
+                    dx = gradient_sca(1:3,el) !# ??? use bafuNCx,y
+                    dy = gradient_sca(4:6,el)
+                    placement = elem_edges(:,el)
+                end if
 
                 ! ===== Hunke and Dukowicz c*h*p*
 #if defined (__icepack)
@@ -618,18 +709,19 @@ subroutine EVPdynamics(ice, partit, mesh)
                 ! use rhs_m and rhs_a for storing the contribution from elevation:
                 aa = 9.81_WP*elem_area(el)/3.0_WP
 
-                elevation_dx = sum(gradient_sca(1:3,el)*elevation(elnodes))
-                elevation_dy = sum(gradient_sca(4:6,el)*elevation(elnodes))
+                elevation_dx = sum(dx*elevation(elnodes))
+                !# ??? elevation in both discretizations always stored on nodes?
+                elevation_dy = sum(dy*elevation(elnodes))
 
                 do k = 1, 3
 #if !defined(DISABLE_OPENACC_ATOMICS)
                     !$ACC ATOMIC UPDATE
 #endif
-                    rhs_a(elnodes(k)) = rhs_a(elnodes(k))-aa*elevation_dx
+                    rhs_a(placement(k)) = rhs_a(placement(k))-aa*elevation_dx
 #if !defined(DISABLE_OPENACC_ATOMICS)
                     !$ACC ATOMIC UPDATE
 #endif
-                    rhs_m(elnodes(k)) = rhs_m(elnodes(k))-aa*elevation_dy
+                    rhs_m(placement(k)) = rhs_m(placement(k))-aa*elevation_dy
                 end do
             end if
         enddo
@@ -644,8 +736,9 @@ subroutine EVPdynamics(ice, partit, mesh)
 
     !___________________________________________________________________________
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    do n=1,myDim_nod2D
+    do n=1,dim
         if (ulevels_nod2d(n)>1) cycle
+        !# ??? check for ulevels_edge2d
         rhs_a(n) = rhs_a(n)/area(1,n)
         rhs_m(n) = rhs_m(n)/area(1,n)
     enddo
@@ -669,7 +762,7 @@ subroutine EVPdynamics(ice, partit, mesh)
 !$OMP DO
 
         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-        do n=1,myDim_nod2D+eDim_nod2D
+        do n=1,dim + halo_dim
            U_ice_old(n) = U_ice(n) !PS
            V_ice_old(n) = V_ice(n) !PS
         end do
@@ -678,10 +771,12 @@ subroutine EVPdynamics(ice, partit, mesh)
 
 !$OMP DO
         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-        do n=1,myDim_nod2D
+        do n=1,dim
             !___________________________________________________________________
             ! if cavity node skip it
             if ( ulevels_nod2d(n)>1 ) cycle
+            !# ??? check for ulevels_edge2d
+
 
             !___________________________________________________________________
             if (a_ice(n) >= 0.01_WP) then               ! Skip if ice is absent
@@ -716,6 +811,7 @@ subroutine EVPdynamics(ice, partit, mesh)
             ! apply coastal sea ice velocity boundary conditions
             if(myList_edge2D(ed) > edge2D_in) then
                 U_ice(edges(1:2,ed))=0.0_WP
+                !# ??? what is edges(:,ed)?
                 V_ice(edges(1:2,ed))=0.0_WP
             endif
 
