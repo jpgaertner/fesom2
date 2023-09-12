@@ -67,7 +67,7 @@ subroutine stress_tensor(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: eps11, eps12, eps22
     real(kind=WP), dimension(:), pointer  :: sigma11, sigma12, sigma22
     real(kind=WP), dimension(:), pointer  :: ice_strength
-    !----------
+    !___________________________________________________________________________
     integer, dimension(3) :: dx, dy, placement
     character :: discretization
 #include "associate_part_def.h"
@@ -93,12 +93,14 @@ subroutine stress_tensor(ice, partit, mesh)
     !# they are initialized in mod_ice but without values
 
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(el, r1, r2, r3, si1, si2, zeta, delta, delta_inv, d1, d2)
+!# ??? what is this?
 
     !# ??? where should this flag best be defined? some parameter list?
     discretization = 'c'
 
 
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+    !# ??? what is this?
     do el=1,myDim_elem2D
         !# ??? how can myDim_elem2D be used here if it is only defined as an
         !# attribute of partit (imported via use MOD_PARTIT). should it not be
@@ -227,6 +229,10 @@ subroutine stress2rhs(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: sigma11, sigma12, sigma22
     real(kind=WP), dimension(:), pointer  :: u_rhs_ice, v_rhs_ice, rhs_a, rhs_m
     real(kind=WP), dimension(:), pointer  :: inv_areamass, ice_strength
+    !___________________________________________________________________________
+    integer, dimension(3) :: dx, dy, placement
+    integer :: dim
+    character :: discretization
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -247,12 +253,31 @@ subroutine stress2rhs(ice, partit, mesh)
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(n, el, k)
 !$OMP DO
 
+    discretization = 'c'
+
+    if (discretization == 'c') then
+        dim = myDim_nod2D
+        dx = gradient_sca(1:3,el)
+        dy = gradient_sca(4:6,el)
+        placement = elem2D_nodes(:,el)
+    else if (discretization == 'nc') then
+        dim = myDim_edge2D
+        dx = gradient_sca(1:3,el) !# ??? use bafuNCx(:,el) (has to be imported from somewhere)
+        dy = gradient_sca(4:6,el) !# use bafuNCy(:,el)
+        placement = elem_edges(:,el)
+    end if
+
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    DO  n=1, myDim_nod2D
+    DO  n=1, dim
         U_rhs_ice(n)=0.0_WP
         V_rhs_ice(n)=0.0_WP
     END DO
     !$ACC END PARALLEL LOOP
+    !# ??? why not just
+    !# U_rhs_ice = 0.0_WP
+    !# V_rhs_ice = 0.0_WP
+    !# ?
+    !# is it because of the parallelization?
 
 !$OMP END DO
 !$OMP DO
@@ -260,7 +285,9 @@ subroutine stress2rhs(ice, partit, mesh)
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
 #else
     !$ACC UPDATE SELF(u_rhs_ice, v_rhs_ice, sigma11, sigma12, sigma22)
+    !# ??? what is this?
 #endif
+
     do el=1,myDim_elem2D
         ! ===== Skip if ice is absent
         !   if (any(m_ice(elnodes)<= 0.) .or. any(a_ice(elnodes) <=0.)) CYCLE
@@ -273,27 +300,29 @@ subroutine stress2rhs(ice, partit, mesh)
             DO k=1,3
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
         call omp_set_lock  (partit%plock(elem2D_nodes(k,el)))
+        !# ??? what is this? also replace it with placement(k)?
 #else
 !$OMP ORDERED
 #endif
 #if !defined(DISABLE_OPENACC_ATOMICS)
                 !$ACC ATOMIC UPDATE
 #endif
-                U_rhs_ice(elem2D_nodes(k,el)) = U_rhs_ice(elem2D_nodes(k,el)) &
+                U_rhs_ice(placement(k)) = U_rhs_ice(placement(k)) &
                 - elem_area(el) * &
-                    (sigma11(el)*gradient_sca(k,el) + sigma12(el)*gradient_sca(k+3,el) &
+                    (sigma11(el)*dx(k) + sigma12(el)*dy(k) &
                     +sigma12(el)*val3*metric_factor(el))            !metrics
 
 #if !defined(DISABLE_OPENACC_ATOMICS)
                 !$ACC ATOMIC UPDATE
 #endif
-                V_rhs_ice(elem2D_nodes(k,el)) = V_rhs_ice(elem2D_nodes(k,el)) &
+                V_rhs_ice(placement(k)) = V_rhs_ice(placement(k)) &
                     - elem_area(el) * &
-                    (sigma12(el)*gradient_sca(k,el) + sigma22(el)*gradient_sca(k+3,el) &
+                    (sigma12(el)*dx(k) + sigma22(el)*dy(k) &
                     -sigma11(el)*val3*metric_factor(el))
 
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
         call omp_unset_lock(partit%plock(elem2D_nodes(k,el)))
+        !# ???
 #else
 !$OMP END ORDERED
 #endif
@@ -304,13 +333,14 @@ subroutine stress2rhs(ice, partit, mesh)
     !$ACC END PARALLEL LOOP
 #else
     !$ACC UPDATE DEVICE(u_rhs_ice, v_rhs_ice)
+    !# ???
 #endif
 
 !$OMP END DO
 !$OMP DO
 
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    DO n=1, myDim_nod2D
+    DO n=1, dim
         !_______________________________________________________________________
         ! if cavity node skip it
         if (ulevels_nod2d(n)>1) cycle
