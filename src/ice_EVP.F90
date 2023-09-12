@@ -45,10 +45,10 @@ end module
 ! sigma12). The ocean velocity is at nodal locations.
 subroutine stress_tensor(ice, partit, mesh)
     USE MOD_ICE
-    USE MOD_PARTIT
+    USE MOD_PARTIT !# ??? where is this?
     USE MOD_PARSUP
     USE MOD_MESH
-    use o_param
+    use o_param !# ??? where are these two modules?
     use g_CONFIG
 #if defined (__icepack)
     use icedrv_main,   only: rdg_conv_elem, rdg_shear_elem, strength
@@ -67,6 +67,9 @@ subroutine stress_tensor(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: eps11, eps12, eps22
     real(kind=WP), dimension(:), pointer  :: sigma11, sigma12, sigma22
     real(kind=WP), dimension(:), pointer  :: ice_strength
+    !----------
+    integer, dimension(3) :: dx, dy, placement
+    character :: discretization
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -83,16 +86,40 @@ subroutine stress_tensor(ice, partit, mesh)
     !___________________________________________________________________________
     vale = 1.0_WP/(ice%ellipse**2)
     dte  = ice%ice_dt/(1.0_WP*ice%evp_rheol_steps)
+    !# ??? why the *1?
     det1 = 1.0_WP/(1.0_WP + 0.5_WP*ice%Tevp_inv*dte)
     det2 = 1.0_WP/(1.0_WP + 0.5_WP*ice%Tevp_inv*dte) !*ellipse**2
+    !# ??? where are all the parameters of ice set, like ice%Tevp_inv?
+    !# they are initialized in mod_ice but without values
 
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(el, r1, r2, r3, si1, si2, zeta, delta, delta_inv, d1, d2)
 
+    !# ??? where should this flag best be defined? some parameter list?
+    discretization = 'c'
+
+
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
     do el=1,myDim_elem2D
+        !# ??? how can myDim_elem2D be used here if it is only defined as an
+        !# attribute of partit (imported via use MOD_PARTIT). should it not be
+        !# accessed as partit%myDim_elem2D?
+
+        if (discretization == 'c') then
+            !# note use conforming p1 functions, placement of variables on vertices
+            dx = gradient_sca(1:3,el)
+            dy = gradient_sca(4:6,el)
+            placement = elem2D_nodes(:,el)
+        else if (discretization == 'nc') then
+            !# note use non-conforming p1 functions, placement on edges
+            dx = gradient_sca(1:3,el) !# ??? use bafuNCx(:,el) (has to be imported from somewhere)
+            dy = gradient_sca(4:6,el) !# use bafuNCy(:,el)
+            placement = elem_edges(:,el)
+        end if
+
         !_______________________________________________________________________
         ! if element contains cavity node skip it
         if (ulevels(el) > 1) cycle
+        !# ??? what is this?
 
         ! ===== Check if there is ice on elem
         ! There is no ice in elem
@@ -101,17 +128,20 @@ subroutine stress_tensor(ice, partit, mesh)
             ! =====
             ! ===== Deformation rate tensor on element elem:
                 !du/dx
-            eps11(el) = sum(gradient_sca(1:3,el)*U_ice(elem2D_nodes(1:3,el))) &
-                - metric_factor(el) * sum(V_ice(elem2D_nodes(1:3,el)))/3.0_WP
+            eps11(el) = sum(dx*U_ice(placement)) &
+                - metric_factor(el) * sum(V_ice(placement))/3.0_WP
 
-            eps22(el) = sum(gradient_sca(4:6, el)*V_ice(elem2D_nodes(1:3,el)))
+            eps22(el) = sum(dy*V_ice(placement))
 
-            eps12(el) = 0.5_WP*(sum(gradient_sca(4:6,el)*U_ice(elem2D_nodes(1:3,el))) &
-                        + sum(gradient_sca(1:3,el)*V_ice(elem2D_nodes(1:3,el))) &
-                        + metric_factor(el) * sum(U_ice(elem2D_nodes(1:3,el)))/3.0_WP)
+            eps12(el) = 0.5_WP*(sum(dy*U_ice(placement)) &
+                        + sum(dx*V_ice(placement)) &
+                        + metric_factor(el) * sum(U_ice(placement))/3.0_WP)
             ! ===== moduli:
             delta = sqrt((eps11(el)*eps11(el) + eps22(el)*eps22(el))*(1.0_WP+vale) + 4.0_WP*vale*eps12(el)*eps12(el) + &
                                 2.0_WP*eps11(el)*eps22(el)*(1.0_WP-vale))
+            !# ??? is it faster this way as a bit of calculation is already
+            !# done and there does not need to be extra saving in memory of
+            !# eps1 = eps11 + eps22, eps2 = eps11 - eps22 ?
 
             ! =======================================
             ! ===== Here the EVP rheology piece starts
@@ -128,6 +158,10 @@ subroutine stress_tensor(ice, partit, mesh)
             ! ===== if delta is too small or zero, viscosity will too large (unlimited)
             ! (limit delta_inv)
             delta_inv = 1.0_WP/max(delta,ice%delta_min)
+            !# ??? in the nc version, delta_reg = delta + delta_min
+            !# this does not need to be changed as they are almost the same,
+            !# right?
+
             zeta = ice_strength(el)*delta_inv
             ! ===== Limiting pressure/Delta  (zeta): it may still happen that pressure/Delta
             ! is too large in some regions and CFL criterion is violated.
@@ -144,6 +178,10 @@ subroutine stress_tensor(ice, partit, mesh)
             zeta = zeta*ice%Tevp_inv
 
             r1  = zeta*(eps11(el)+eps22(el)) - ice_strength(el)*ice%Tevp_inv
+            !# ??? is there a factor of 2 missing in the sigma^p terms?
+            !# ??? in this, case, r1 = ..P/delta_r ( eps1 - delta_r)
+            !# is there a reason for using the regularized delta in the
+            !# second term
             r2  = zeta*(eps11(el)-eps22(el))*vale
             r3  = zeta*eps12(el)*vale
 
@@ -158,6 +196,7 @@ subroutine stress_tensor(ice, partit, mesh)
             rdg_conv_elem(el)  = -min((eps11(el)+eps22(el)),0.0_WP)
             rdg_shear_elem(el) = 0.5_WP*(delta - abs(eps11(el)+eps22(el)))
 #endif
+!# ??? what is this?
         endif
     end do
     !$ACC END PARALLEL LOOP
