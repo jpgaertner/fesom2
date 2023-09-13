@@ -257,14 +257,8 @@ subroutine stress2rhs(ice, partit, mesh)
 
     if (discretization == 'c') then
         dim = myDim_nod2D
-        dx = gradient_sca(1:3,el)
-        dy = gradient_sca(4:6,el)
-        placement = elem2D_nodes(:,el)
     else if (discretization == 'nc') then
         dim = myDim_edge2D
-        dx = gradient_sca(1:3,el) !# ??? use bafuNCx(:,el) (has to be imported from somewhere)
-        dy = gradient_sca(4:6,el) !# use bafuNCy(:,el)
-        placement = elem_edges(:,el)
     end if
 
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
@@ -289,6 +283,17 @@ subroutine stress2rhs(ice, partit, mesh)
 #endif
 
     do el=1,myDim_elem2D
+
+        if (discretization == 'c') then
+            dx = gradient_sca(1:3,el)
+            dy = gradient_sca(4:6,el)
+            placement = elem2D_nodes(:,el)
+        else if (discretization == 'nc') then
+            dx = gradient_sca(1:3,el) !# ??? use bafuNCx(:,el) (has to be imported from somewhere)
+            dy = gradient_sca(4:6,el) !# use bafuNCy(:,el)
+            placement = elem_edges(:,el)
+        end if
+
         ! ===== Skip if ice is absent
         !   if (any(m_ice(elnodes)<= 0.) .or. any(a_ice(elnodes) <=0.)) CYCLE
         !_______________________________________________________________________
