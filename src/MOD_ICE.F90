@@ -180,6 +180,11 @@ TYPE T_ICE
 
     integer                   :: ice_steps_since_upd=0
     logical                   :: ice_update = .true.
+
+    character                 :: discretization = 'c'      ! c: use conforming p1 functions, placement of
+                                                           !    velocities on vertices
+                                                           ! nc: use non-conforming p1 functions, placement
+                                                           !    of velocities on edges
     !___________________________________________________________________________
     contains
 #if defined(__PGI)
