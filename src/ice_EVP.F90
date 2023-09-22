@@ -96,9 +96,15 @@ subroutine stress_tensor(ice, partit, mesh)
     !# note this is the EVP solver (uses T & dte), not the mEVP (uses alpha & beta)
 
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(el, r1, r2, r3, si1, si2, zeta, delta, delta_inv, d1, d2)
-!# ??? these are open mpi directives, ask patrick/ dima about this
+    !# note this defines these variables as local. They are only initialized and available in
+    !# their respective threads. The global variables like sigma11 are available in every thread
+    !# note threading is not the partitioning of the mesh. In partitioning, the mesh is split into
+    !# parts and distributed between the cores. This has already been done before calling this routine
+    !# (->myDim_elem2D are the elements on the current core)
 
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+    !# ??? gpu, cuda
+    !# -> dima, jan hegewald, suvi
     do el=1,myDim_elem2D
         !# note myDim_elem2D can be used directly because of #include associate_part_ass.h
         !# which includes myDim_elem2D    => partit%myDim_elem2D
@@ -116,10 +122,9 @@ subroutine stress_tensor(ice, partit, mesh)
         !_______________________________________________________________________
         ! if element contains cavity node skip it
         if (ulevels(el) > 1) cycle
-        !# note these are vertical levels of the model. the calculation is skipped if the
-        !# element is below the sea surface. this is the case if the element is below shelf
-        !# ice (then no additional ice in the form of sea ice is calculated)
-        !# ??? ask patrick about this
+        !# note ulevels is the vertical index of the surface ocean level. at the highest level, it is =1.
+        !# if there is a cavitiy and the highest ocean level is thus at a greater depth, it is >1.
+        !# below a cavity no additional sea ice is formed and the calculations are skipped
 
         ! ===== Check if there is ice on elem
         ! There is no ice in elem
@@ -294,8 +299,15 @@ subroutine stress2rhs(ice, partit, mesh)
             DO k=1,3
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
         call omp_set_lock  (partit%plock(elem2D_nodes(k,el)))
-        !# ??? ask patrick, dima about the open mpi stuff
+        !# note this ensures reproducability. without parallelization, an array is calculated in order,
+        !# meaning in the same order every time => the calculation is reproducable. when using parallelization
+        !# the array is split up in parts, they are calculated individually and the set together. the
+        !# splitting up is not always necessarily the same, therefore the result after putting the parts
+        !# back together is not necessarily the same. it is thus not reproducable. this routine ensures
+        !# a consistent of splitting up of arrays and thus reproducability
+        !# ??? does this have to elem_edges be changed when using nc disretization?
 #else
+
 !$OMP ORDERED
 #endif
 #if !defined(DISABLE_OPENACC_ATOMICS)
@@ -335,8 +347,13 @@ subroutine stress2rhs(ice, partit, mesh)
     DO n=1, dim
         !_______________________________________________________________________
         ! if cavity node skip it
-        if (ulevels_nod2d(n)>1) cycle
-        !# ??? is there an equivalent ulevels_edge2d that can be used?
+        if (discretization=='c') then
+            if (ulevels_nod2d(n)>1) cycle
+            !# note ulevels_nod2d(node) is calculated from ulevels(elem). it is set to the highest
+            !# level of its adjacent elements.
+        if (discretization=='nc') then
+            if (.not.all(ulevels_nod2D(edge_tri(:,n)))==[1,1]) cycle
+        end if
 
         !_______________________________________________________________________
         if (inv_areamass(n) > 0._WP) then
@@ -524,9 +541,9 @@ subroutine EVPdynamics(ice, partit, mesh)
             !# if ( both(ulevels_nod2d(edges(1:2,n))) > 1 ) cycle
             !# ask patrick about the convention on where to nullify ice velocity on edges
 
-            a_ice_ed =  0.5_WP * (a_ice(nodes(1))  + a_ice(nodes(2)))
-            m_ice_ed =  0.5_WP * (m_ice(nodes(1))  + m_ice(nodes(2)))
-            m_snow_ed = 0.5_WP * (m_snow(nodes(1)) + m_snow(nodes(2)))
+            a_ice_ed =  0.5_WP * sum(a_ice(nodes(:)))
+            m_ice_ed =  0.5_WP * sum(m_ice(nodes(:)))
+            m_snow_ed = 0.5_WP * sum(m_snow(nodes(:)))
 
             if ((rhoice*m_ice_ed+rhosno*m_snow_ed) > 1.e-3_WP) then
                 inv_areamass(n) = 1._WP/(a_ice_ed*(rhoice*m_ice_ed+rhosno*m_snow_ed))
@@ -566,19 +583,16 @@ subroutine EVPdynamics(ice, partit, mesh)
 #endif
         do el = 1,myDim_elem2D
             elnodes = elem2D_nodes(:,el)
-            ice_strength(el)=0.0_WP
             !___________________________________________________________________
             ! if element has any cavity node skip it
             if (ulevels(el) > 1) cycle
 
             !___________________________________________________________________
-            if (any(m_ice(elnodes)<=0._WP) .or. &
-                any(a_ice(elnodes)<=0._WP)) then
+            if (any(m_ice(elnodes)==0._WP) .or. &
+                any(a_ice(elnodes)==0._WP)) then
 
-                ! There is no ice in elem
+                !# note if one of the nodes has no ice, set the ice of the whole element to zero
                 ice_strength(el) = 0._WP
-                !# ??? isnt this already done 10 lines before?
-                ! ask patrick
 
             !___________________________________________________________________
             else
@@ -654,19 +668,16 @@ subroutine EVPdynamics(ice, partit, mesh)
             !$ACC UPDATE SELF(rhs_a, rhs_m, ice_strength, m_ice, a_ice)
 #endif
         do el = 1,myDim_elem2D
-            ice_strength(el)=0.0_WP
             elnodes = elem2D_nodes(:,el)
             !___________________________________________________________________
             ! if element has any cavity node skip it
             if (ulevels(el) > 1) cycle
 
             !___________________________________________________________________
-            if (any(m_ice(elnodes) <= 0._WP) .or. &
-                any(a_ice(elnodes) <=0._WP)) then
+            if (any(m_ice(elnodes) == 0._WP) .or. &
+                any(a_ice(elnodes) == 0._WP)) then
 
-                ! There is no ice in elem
                 ice_strength(el) = 0._WP
-                !# ??? done already?
             else
                 if (discretization=='c') then
                     dx = gradient_sca(1:3,el)
@@ -792,7 +803,6 @@ subroutine EVPdynamics(ice, partit, mesh)
             ! apply coastal sea ice velocity boundary conditions
             if(myList_edge2D(ed) > edge2D_in) then
                 U_ice(edges(1:2,ed))=0.0_WP
-                !# ??? what is edges(:,ed)? two vertices at the edge
                 V_ice(edges(1:2,ed))=0.0_WP
             endif
 
