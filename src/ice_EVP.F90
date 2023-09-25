@@ -352,6 +352,8 @@ subroutine stress2rhs(ice, partit, mesh)
             if (ulevels_nod2d(n)>1) cycle
             !# note ulevels_nod2d(node) is calculated from ulevels(elem). it is set to the highest
             !# level of its adjacent elements.
+            !# ??? doesn't it make more sense if it set to the lowest (ie furthest from the
+            !# surface) level of its adjacent elements?
             !_______________________________________________________________________
             if (inv_areamass(n) > 0._WP) then
                 U_rhs_ice(n) = U_rhs_ice(n)*inv_areamass(n) + rhs_a(n)
