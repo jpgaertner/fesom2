@@ -104,7 +104,7 @@ subroutine stress_tensor(ice, partit, mesh)
 
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
     !# ??? gpu, cuda
-    !# -> dima, jan hegewald, suvi
+    !# -> ask dima, jan hegewald, suvi
     do el=1,myDim_elem2D
         !# note myDim_elem2D can be used directly because of #include associate_part_ass.h
         !# which includes myDim_elem2D    => partit%myDim_elem2D
@@ -341,33 +341,46 @@ subroutine stress2rhs(ice, partit, mesh)
 #endif
 
 !$OMP END DO
-!$OMP DO
 
-    !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    DO n=1, dim
-        !_______________________________________________________________________
-        ! if cavity node skip it
-        if (discretization=='c') then
+
+    if (discretization=='c') then 
+    !$OMP DO
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+        DO n=1, myDim_nod2D
+            !_______________________________________________________________________
+            ! if cavity node skip it
             if (ulevels_nod2d(n)>1) cycle
             !# note ulevels_nod2d(node) is calculated from ulevels(elem). it is set to the highest
             !# level of its adjacent elements.
-        if (discretization=='nc') then
-            if (.not.all(ulevels_nod2D(edge_tri(:,n)))==[1,1]) cycle
-        end if
+            !_______________________________________________________________________
+            if (inv_areamass(n) > 0._WP) then
+                U_rhs_ice(n) = U_rhs_ice(n)*inv_areamass(n) + rhs_a(n)
+                !# note inv_areamass = 1/Sm, in rhs_a is 1/S already included
+                V_rhs_ice(n) = V_rhs_ice(n)*inv_areamass(n) + rhs_m(n)
+            else
+                U_rhs_ice(n) = 0._WP
+                V_rhs_ice(n) = 0._WP
+            endif
+        END DO
+        !$ACC END PARALLEL LOOP
+    !$OMP END DO
+    else if (discretization=='nc') then
+        DO n=1, myDim_edge2D
+            !_______________________________________________________________________
+            !# note skip edge if one of the neighbouring elements is not a surface element
+            if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+            !_______________________________________________________________________
+            if (inv_areamass(n) > 0._WP) then
+                U_rhs_ice(n) = U_rhs_ice(n)*inv_areamass(n) + rhs_a(n)
+                !# note inv_areamass = 1/Sm, in rhs_a is 1/S already included
+                V_rhs_ice(n) = V_rhs_ice(n)*inv_areamass(n) + rhs_m(n)
+            else
+                U_rhs_ice(n) = 0._WP
+                V_rhs_ice(n) = 0._WP
+            endif
+        END DO
+    end if
 
-        !_______________________________________________________________________
-        if (inv_areamass(n) > 0._WP) then
-            U_rhs_ice(n) = U_rhs_ice(n)*inv_areamass(n) + rhs_a(n)
-            !# note inv_areamass = 1/Sm, in rhs_a is 1/S already included
-            V_rhs_ice(n) = V_rhs_ice(n)*inv_areamass(n) + rhs_m(n)
-        else
-            U_rhs_ice(n) = 0._WP
-            V_rhs_ice(n) = 0._WP
-        endif
-    END DO
-    !$ACC END PARALLEL LOOP
-
-!$OMP END DO
 !$OMP END PARALLEL
 end subroutine stress2rhs
 !
@@ -535,11 +548,9 @@ subroutine EVPdynamics(ice, partit, mesh)
     !$OMP END PARALLEL DO
     else if (discretization=='nc') then
         do n=1,myDim_edge2D
+            !# note skip edge if one of the neighbouring elements is not a surface element
+            if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
             nodes = edges(:,n)
-            !# ??? if (ulevels_edge2d(n)>1) cycle
-            !# use something like
-            !# if ( both(ulevels_nod2d(edges(1:2,n))) > 1 ) cycle
-            !# ask patrick about the convention on where to nullify ice velocity on edges
 
             a_ice_ed =  0.5_WP * sum(a_ice(nodes(:)))
             m_ice_ed =  0.5_WP * sum(m_ice(nodes(:)))
@@ -724,19 +735,26 @@ subroutine EVPdynamics(ice, partit, mesh)
 #endif
 !$OMP END PARALLEL DO
     endif ! --> if ( .not. trim(which_ALE)=='linfs') then
-!$OMP PARALLEL DO
 
-    !___________________________________________________________________________
-    !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    do n=1,dim
-        if (ulevels_nod2d(n)>1) cycle
-        !# ??? aks patrick for ulevels_edge2d
+if (discretization=='c') then
+    !$OMP PARALLEL DO
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+        do n=1,myDim_nod2D
+            if (ulevels_nod2d(n)>1) cycle
+            rhs_a(n) = rhs_a(n)/area(1,n)
+            rhs_m(n) = rhs_m(n)/area(1,n)
+        enddo
+        !$ACC END PARALLEL LOOP
+    !$OMP END PARALLEL DO
+else if (discretization=='nc') then
+    do n=1,myDim_edge2D
+        if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
         rhs_a(n) = rhs_a(n)/area(1,n)
         rhs_m(n) = rhs_m(n)/area(1,n)
     enddo
-    !$ACC END PARALLEL LOOP
+end if
 
-!$OMP END PARALLEL DO
+
     !___________________________________________________________________________
     ! End of Precomputing --> And the ice stepping starts
 #if defined (__icepack)
