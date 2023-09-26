@@ -439,7 +439,7 @@ subroutine EVPdynamics(ice, partit, mesh)
     real(kind=WP)              , pointer  :: inv_rhowat, rhosno, rhoice
     !___________________________________________________________________________
     integer :: dim, halo_dim, nodes(2), placement(3)
-    real(kind=WP) :: a_ice_ed, m_ice_ed, m_snow_ed
+    real(kind=WP) :: a_ice_ed, m_ice_ed, m_snow_ed, uw, vw, stx, sty
     character, pointer :: discretization
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
@@ -554,9 +554,9 @@ subroutine EVPdynamics(ice, partit, mesh)
             if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
             nodes = edges(:,n)
 
-            a_ice_ed =  0.5_WP * sum(a_ice(nodes(:)))
-            m_ice_ed =  0.5_WP * sum(m_ice(nodes(:)))
-            m_snow_ed = 0.5_WP * sum(m_snow(nodes(:)))
+            a_ice_ed =  0.5_WP * sum(a_ice(nodes))
+            m_ice_ed =  0.5_WP * sum(m_ice(nodes))
+            m_snow_ed = 0.5_WP * sum(m_snow(nodes))
 
             if ((rhoice*m_ice_ed+rhosno*m_snow_ed) > 1.e-3_WP) then
                 inv_areamass(n) = 1._WP/(a_ice_ed*(rhoice*m_ice_ed+rhosno*m_snow_ed))
@@ -577,6 +577,8 @@ subroutine EVPdynamics(ice, partit, mesh)
         end do
         !# ??? this loop probably also needs these $OMP $ACC $IDK parallelization flags
     end if
+    !# ??? is there a reason for not putting this in a seperate subroutine and then use
+    !# call calc_inv_mass
 
     !___________________________________________________________________________
     use_pice=0
@@ -737,6 +739,7 @@ subroutine EVPdynamics(ice, partit, mesh)
 #endif
 !$OMP END PARALLEL DO
     endif ! --> if ( .not. trim(which_ALE)=='linfs') then
+    !# ??? put the ssh term in a seperate routine?
 
 if (discretization=='c') then
     !$OMP PARALLEL DO
@@ -781,129 +784,165 @@ end if
         !$ACC END PARALLEL LOOP
 !$OMP END DO
 
+        if (discretization=='c') then
 !$OMP DO
-        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-        do n=1,dim
-            !___________________________________________________________________
-            ! if cavity node skip it
-            if ( ulevels_nod2d(n)>1 ) cycle
-            !# ??? check for ulevels_edge2d
+            !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+            do n=1,myDim_nod2D
+                !___________________________________________________________________
+                ! if cavity node skip it
+                if ( ulevels_nod2d(n)>1 ) cycle
 
+                !___________________________________________________________________
+                if (a_ice(n) >= 0.01_WP) then               ! Skip if ice is absent
+                    umod = sqrt((U_ice(n)-U_w(n))**2+(V_ice(n)-V_w(n))**2)
+                    drag = ice%cd_oce_ice*umod*density_0*inv_mass(n)
 
-            !___________________________________________________________________
-            if (a_ice(n) >= 0.01_WP) then               ! Skip if ice is absent
-                umod = sqrt((U_ice(n)-U_w(n))**2+(V_ice(n)-V_w(n))**2)
-                drag = ice%cd_oce_ice*umod*density_0*inv_mass(n)
+                    rhsu = U_ice(n) +rdt*(drag*(ax*U_w(n) - ay*V_w(n))+ &
+                            inv_mass(n)*stress_atmice_x(n) + U_rhs_ice(n))
+                    rhsv = V_ice(n) +rdt*(drag*(ax*V_w(n) + ay*U_w(n))+ &
+                            inv_mass(n)*stress_atmice_y(n) + V_rhs_ice(n))
 
-                rhsu = U_ice(n) +rdt*(drag*(ax*U_w(n) - ay*V_w(n))+ &
-                        inv_mass(n)*stress_atmice_x(n) + U_rhs_ice(n))
-                rhsv = V_ice(n) +rdt*(drag*(ax*V_w(n) + ay*U_w(n))+ &
-                        inv_mass(n)*stress_atmice_y(n) + V_rhs_ice(n))
-
-                r_a      = 1._WP + ax*drag*rdt
-                r_b      = rdt*(mesh%coriolis_node(n) + ay*drag)
-                det      = 1.0_WP/(r_a*r_a + r_b*r_b)
-                U_ice(n) = det*(r_a*rhsu +r_b*rhsv)
-                V_ice(n) = det*(r_a*rhsv -r_b*rhsu)
-            else  ! Set velocities to 0 if ice is absent
-                U_ice(n) = 0.0_WP
-                V_ice(n) = 0.0_WP
-            end if
-        end do
-        !$ACC END PARALLEL LOOP
+                    r_a      = 1._WP + ax*drag*rdt
+                    r_b      = rdt*(mesh%coriolis_node(n) + ay*drag)
+                    det      = 1.0_WP/(r_a*r_a + r_b*r_b)
+                    U_ice(n) = det*(r_a*rhsu +r_b*rhsv)
+                    V_ice(n) = det*(r_a*rhsv -r_b*rhsu)
+                else  ! Set velocities to 0 if ice is absent
+                    U_ice(n) = 0.0_WP
+                    V_ice(n) = 0.0_WP
+                end if
+            end do
+            !$ACC END PARALLEL LOOP
 !$OMP END DO
+        else if (discretization=='nc') then
+            do n=1,myDim_edge2D
+                !# note skip edge if one of the neighbouring elements is not a surface element
+                if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+
+                nodes = edges(:,n)
+                a_ice_ed =  0.5_WP * sum(a_ice(nodes))
+                if (a_ice_ed >= 0.01_WP) then
+                    uw = 0.5_WP*sum(U_w(nodes))
+                    vw = 0.5_WP*sum(V_w(nodes))
+
+                    umod = sqrt((U_ice(n)-uw)**2+(V_ice(n)-vw)**2)
+                    drag = ice%cd_oce_ice*umod*density_0*inv_mass(n)
+
+                    stx=0.5_WP*sum(stress_atmice_x(nodes))
+                    sty=0.5_WP*sum(stress_atmice_y(nodes))
+
+                    rhsu = U_ice(n) +rdt*(drag*(ax*uw - ay*vw)+ &
+                            inv_mass(n)*stx + U_rhs_ice(n))
+                    rhsv = V_ice(n) +rdt*(drag*(ax*vw + ay*uw)+ &
+                            inv_mass(n)*sty + V_rhs_ice(n))
+
+                    r_a      = 1._WP + ax*drag*rdt
+                    r_b      = rdt*(mesh%coriolis_node(n) + ay*drag)
+                    det      = 1.0_WP/(r_a*r_a + r_b*r_b)
+                    U_ice(n) = det*(r_a*rhsu +r_b*rhsv)
+                    V_ice(n) = det*(r_a*rhsv -r_b*rhsu)
+                else  ! Set velocities to 0 if ice is absent
+                    U_ice(n) = 0.0_WP
+                    V_ice(n) = 0.0_WP
+                end if
+            end do
+        end if
+
         !_______________________________________________________________________
         ! apply sea ice velocity boundary condition
 
+        if (discretization=='c') then
 !$OMP DO
-        ! With the binary data of np2 goes only inside the first if
-        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-        DO  ed=1,myDim_edge2D
-            !___________________________________________________________________
-            ! apply coastal sea ice velocity boundary conditions
-            if(myList_edge2D(ed) > edge2D_in) then
-                U_ice(edges(1:2,ed))=0.0_WP
-                V_ice(edges(1:2,ed))=0.0_WP
-            endif
+            ! With the binary data of np2 goes only inside the first if
+            !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+            DO  ed=1,myDim_edge2D
+                !___________________________________________________________________
+                ! apply coastal sea ice velocity boundary conditions
+                if(myList_edge2D(ed) > edge2D_in) then
+                    U_ice(edges(1:2,ed))=0.0_WP
+                    V_ice(edges(1:2,ed))=0.0_WP
+                endif
 
-            !___________________________________________________________________
-            ! apply sea ice velocity boundary conditions at cavity-ocean edge
-            if (use_cavity) then
-            !# ??? patrick
-!                 if ( (ulevels(edge_tri(1,ed))>1) .or. &
-!                     ( edge_tri(2,ed)>0 .and. ulevels(edge_tri(2,ed))>1) ) then
-! #if defined(_OPENMP)  && !defined(__openmp_reproducible)
-!                     call omp_set_lock  (partit%plock(edges(1,ed)))
-! #else
-! !$OMP ORDERED
-! #endif
-!                     U_ice(edges(1,ed))=0.0_WP
-!                     V_ice(edges(1,ed))=0.0_WP
-!
-! #if defined(_OPENMP) && !defined(__openmp_reproducible)
-!                     call omp_unset_lock(partit%plock(edges(1,ed)))
-!                     call omp_set_lock  (partit%plock(edges(2,ed)))
-! #endif
-!                     U_ice(edges(2,ed))=0.0_WP
-!                     V_ice(edges(2,ed))=0.0_WP
-!
-! #if defined(_OPENMP)  && !defined(__openmp_reproducible)
-!                     call omp_unset_lock(partit%plock(edges(2,ed)))
-! #else
-! !$OMP END ORDERED
-! #endif
-!                 end if
-                if (ulevels(edge_tri(1,ed))>1) then
+                !___________________________________________________________________
+                ! apply sea ice velocity boundary conditions at cavity-ocean edge
+                if (use_cavity) then
+    !                 if ( (ulevels(edge_tri(1,ed))>1) .or. &
+    !                     ( edge_tri(2,ed)>0 .and. ulevels(edge_tri(2,ed))>1) ) then
+    ! #if defined(_OPENMP)  && !defined(__openmp_reproducible)
+    !                     call omp_set_lock  (partit%plock(edges(1,ed)))
+    ! #else
+    ! !$OMP ORDERED
+    ! #endif
+    !                     U_ice(edges(1,ed))=0.0_WP
+    !                     V_ice(edges(1,ed))=0.0_WP
+    !
+    ! #if defined(_OPENMP) && !defined(__openmp_reproducible)
+    !                     call omp_unset_lock(partit%plock(edges(1,ed)))
+    !                     call omp_set_lock  (partit%plock(edges(2,ed)))
+    ! #endif
+    !                     U_ice(edges(2,ed))=0.0_WP
+    !                     V_ice(edges(2,ed))=0.0_WP
+    !
+    ! #if defined(_OPENMP)  && !defined(__openmp_reproducible)
+    !                     call omp_unset_lock(partit%plock(edges(2,ed)))
+    ! #else
+    ! !$OMP END ORDERED
+    ! #endif
+    !                 end if
+                    if (ulevels(edge_tri(1,ed))>1) then
 #if defined(_OPENMP)  && !defined(__openmp_reproducible)
-                    call omp_set_lock  (partit%plock(edges(1,ed)))
+                        call omp_set_lock  (partit%plock(edges(1,ed)))
 #else
-!$OMP ORDERED
+    !$OMP ORDERED
 #endif
-                    U_ice(edges(1,ed))=0.0_WP
-                    V_ice(edges(1,ed))=0.0_WP
+                        U_ice(edges(1,ed))=0.0_WP
+                        V_ice(edges(1,ed))=0.0_WP
 
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
-                    call omp_unset_lock(partit%plock(edges(1,ed)))
-                    call omp_set_lock  (partit%plock(edges(2,ed)))
+                        call omp_unset_lock(partit%plock(edges(1,ed)))
+                        call omp_set_lock  (partit%plock(edges(2,ed)))
 #endif
-                    U_ice(edges(2,ed))=0.0_WP
-                    V_ice(edges(2,ed))=0.0_WP
+                        U_ice(edges(2,ed))=0.0_WP
+                        V_ice(edges(2,ed))=0.0_WP
 
 #if defined(_OPENMP)  && !defined(__openmp_reproducible)
-                    call omp_unset_lock(partit%plock(edges(2,ed)))
+                        call omp_unset_lock(partit%plock(edges(2,ed)))
 #else
-!$OMP END ORDERED
+    !$OMP END ORDERED
 #endif
-                elseif ( edge_tri(2,ed)>0) then
-                    if (ulevels(edge_tri(2,ed))>1) then
+                    elseif ( edge_tri(2,ed)>0) then
+                        if (ulevels(edge_tri(2,ed))>1) then
 #if defined(_OPENMP)  && !defined(__openmp_reproducible)
-                    call omp_set_lock  (partit%plock(edges(1,ed)))
+                        call omp_set_lock  (partit%plock(edges(1,ed)))
 #else
-!$OMP ORDERED
+    !$OMP ORDERED
 #endif
-                    U_ice(edges(1,ed))=0.0_WP
-                    V_ice(edges(1,ed))=0.0_WP
+                        U_ice(edges(1,ed))=0.0_WP
+                        V_ice(edges(1,ed))=0.0_WP
 
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
-                    call omp_unset_lock(partit%plock(edges(1,ed)))
-                    call omp_set_lock  (partit%plock(edges(2,ed)))
+                        call omp_unset_lock(partit%plock(edges(1,ed)))
+                        call omp_set_lock  (partit%plock(edges(2,ed)))
 #endif
-                    U_ice(edges(2,ed))=0.0_WP
-                    V_ice(edges(2,ed))=0.0_WP
+                        U_ice(edges(2,ed))=0.0_WP
+                        V_ice(edges(2,ed))=0.0_WP
 
 #if defined(_OPENMP)  && !defined(__openmp_reproducible)
-                    call omp_unset_lock(partit%plock(edges(2,ed)))
+                        call omp_unset_lock(partit%plock(edges(2,ed)))
 #else
-!$OMP END ORDERED
+    !$OMP END ORDERED
 #endif
 
+                        end if
                     end if
                 end if
-            end if
-        end do
-        !$ACC END PARALLEL LOOP
+            end do
+            !$ACC END PARALLEL LOOP
 
 !$OMP END DO
+        !# else if (discretization=='nc)
+        !# ??? can the same functions be used?
+        end if
 !$OMP END PARALLEL
 !write(*,*) partit%mype, shortstep, 'CP4'
         !_______________________________________________________________________
