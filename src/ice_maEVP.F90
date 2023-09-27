@@ -638,9 +638,8 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             mass(i) = 0._WP
             ice_nod(i) = .false.
             !_______________________________________________________________________
-            ! if cavity ndoe skip it
-            if ( ulevels_nod2d(i)>1 ) cycle
-            !# ??? check for ulevels_edge2d
+            ! if one of the neighbouring elements
+            if (.not.all(ulevels_nod2D(edge_tri(:,i))==[1,1])) cycle
 
             a_ice_ed =  0.5_WP * (a_ice(nodes(1))  + a_ice(nodes(2)))
             m_ice_ed =  0.5_WP * (m_ice(nodes(1))  + m_ice(nodes(2)))
@@ -849,7 +848,6 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             u_rhs_ice(row)=0.0_WP
             v_rhs_ice(row)=0.0_WP
         end do
-        !# ??? why?
 
         call exchange_nod_end(partit)
         !# ??? what is this and where is it defined?
