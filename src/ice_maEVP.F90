@@ -274,6 +274,8 @@ subroutine ssh2rhs(ice, partit, mesh)
                 dy = -2.0_WP*gradient_sca(4:6,elem)
                 placement = elem_edges(:,elem)
             end if
+            !# ??? try if it makes a difference if the flag is outside of the loop and
+            !# dx(elem) is calculated in a loop inside if c/nc statement 
 
             !_______________________________________________________________________
             ! add pressure gradient from sea ice --> in case of floating sea ice
@@ -345,6 +347,7 @@ subroutine stress2rhs_m(ice, partit, mesh)
     !___________________________________________________________________________
     integer             :: placement(3)
     character, pointer  :: discretization
+    real                :: m_ice_ed, m_snow_ed, area_ed
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -399,16 +402,33 @@ subroutine stress2rhs_m(ice, partit, mesh)
         end do
     end do
 
-    do row=1, myDim_nod2d
-        !_______________________________________________________________________
-        ! if cavity node skip it
-        if ( ulevels_nod2d(row)>1 ) cycle
+    if (discretization=='c') then
+        do row=1, myDim_nod2d
+            !_______________________________________________________________________
+            ! if cavity node skip it
+            if ( ulevels_nod2d(row)>1 ) cycle
 
-        mass=(m_ice(row)*rhoice+m_snow(row)*rhosno)
-        mass=mass/(1.0_WP+mass*mass)
-        u_rhs_ice(row)=(u_rhs_ice(row)*mass + rhs_a(row))/area(1,row)
-        v_rhs_ice(row)=(v_rhs_ice(row)*mass + rhs_m(row))/area(1,row)
-    end do
+            mass=(m_ice(row)*rhoice+m_snow(row)*rhosno)
+            mass=mass/(1.0_WP+mass*mass)
+            u_rhs_ice(row)=(u_rhs_ice(row)*mass + rhs_a(row))/area(1,row)
+            v_rhs_ice(row)=(v_rhs_ice(row)*mass + rhs_m(row))/area(1,row)
+        end do
+    else if (discretization=='nc') then
+        do row=1, myDim_edge2D
+            !_______________________________________________________________________
+            ! if cavity edge skip it
+            if (.not.all(ulevels_nod2D(edge_tri(:,row))==[1,1])) cycle
+
+            m_ice_ed = 0.5_WP*sum(m_ice(edges(:,row)))
+            m_snow_ed = 0.5_WP*sum(m_snow(edges(:,row)))
+            area_ed = 1/3.0_WP*sum(elem_area(edge_tri(:,row)))
+
+            mass=(m_ice_ed*rhoice+m_snow_ed*rhosno)
+            mass=mass/(1.0_WP+mass*mass)
+            u_rhs_ice(row)=(u_rhs_ice(row)*mass + rhs_a(row))/area_ed
+            v_rhs_ice(row)=(v_rhs_ice(row)*mass + rhs_m(row))/area_ed
+        end do
+    end if
 end subroutine stress2rhs_m
 !
 !
@@ -465,7 +485,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
 #endif
     real(kind=WP)              , pointer  :: rhoice, rhosno, inv_rhowat
     !___________________________________________________________________________
-    real(kind=WP)       :: a_ice_ed, m_ice_ed, m_snow_ed, uw, vw, coriolis
+    real(kind=WP)       :: a_ice_ed, m_ice_ed, m_snow_ed, uw, vw, coriolis, area_ed
     integer             :: placement(3), nodes(2), dim
     character, pointer  :: discretization
 #include "associate_part_def.h"
@@ -638,19 +658,20 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             mass(i) = 0._WP
             ice_nod(i) = .false.
             !_______________________________________________________________________
-            ! if one of the neighbouring elements
+            ! if one of the neighbouring elements is a cavity element, skip it
             if (.not.all(ulevels_nod2D(edge_tri(:,i))==[1,1])) cycle
 
-            a_ice_ed =  0.5_WP * (a_ice(nodes(1))  + a_ice(nodes(2)))
-            m_ice_ed =  0.5_WP * (m_ice(nodes(1))  + m_ice(nodes(2)))
-            m_snow_ed = 0.5_WP * (m_snow(nodes(1)) + m_snow(nodes(2)))
+            a_ice_ed =  0.5_WP * sum(a_ice(nodes))
+            m_ice_ed =  0.5_WP * sum(m_ice(nodes))
+            m_snow_ed = 0.5_WP * sum(m_snow(nodes))
+            area_ed = 1/3.0_WP * sum(elem_area(edge_tri(:,i)))
 
             if (a_ice_ed >= 0.01_WP) then
                 inv_thickness(i) = (rhoice*m_ice_ed+rhosno*m_snow_ed)/a_ice_ed
                 inv_thickness(i) = 1.0_WP/max(inv_thickness(i), 9.0_WP)  ! Limit the mass
 
                 mass(i) = (m_ice_ed*rhoice+m_snow_ed*rhosno)
-                mass(i) = mass(i)/((1.0_WP+mass(i)*mass(i))*area(1,i))
+                mass(i) = mass(i)/((1.0_WP+mass(i)*mass(i))*area_ed)
                 !# ??? the +1 is just a regularization to avoid singularities, right?
                 !# ??? should that be changed to the regularization of the nc file?
                 !# (that one used an if mass > ... flag)
@@ -658,8 +679,8 @@ subroutine EVPdynamics_m(ice, partit, mesh)
                 !# on edge testfunctions, right? where is it calculated?
 
                 ! scale rhs_a, rhs_m, too.
-                rhs_a(i) = rhs_a(i)/area(1,i)
-                rhs_m(i) = rhs_m(i)/area(1,i)
+                rhs_a(i) = rhs_a(i)/area_ed
+                rhs_m(i) = rhs_m(i)/area_ed
 
                 ice_nod(i) = .true.
             endif
@@ -773,8 +794,11 @@ subroutine EVPdynamics_m(ice, partit, mesh)
 
         do i=1, dim
             !___________________________________________________________________
-            if (ulevels_nod2D(i)>1) cycle
-            !# ??? check for ulevels_edge2D
+            if (discretization=='c') then
+                if (ulevels_nod2D(i)>1) cycle
+            else if (discretization=='nc') then
+                if (.not.all(ulevels_nod2D(edge_tri(:,i))==[1,1])) cycle
+            end if
 
             !___________________________________________________________________
             if (ice_nod(i)) then                   ! Skip if ice is absent
@@ -788,9 +812,9 @@ subroutine EVPdynamics_m(ice, partit, mesh)
                     uw = u_w(i)
                     coriolis = mesh%coriolis_node(i)
                 else if (discretization=='nc') then
-                    uw = 0.5_WP*(u_w(edges(1,i))+u_w(edges(2,i)))
-                    vw = 0.5_WP*(v_w(edges(1,i))+v_w(edges(2,i)))
-                    coriolis = 0.5_WP*(mesh%coriolis_node(edges(1,i))+mesh%coriolis_node(edges(2,i)))
+                    uw = 0.5_WP*sum(u_w(edges(:,i)))
+                    vw = 0.5_WP*sum(v_w(edges(:,i)))
+                    coriolis = 0.5_WP*sum(mesh%coriolis_node(edges(:,i)))
                 end if
 
                 umod = sqrt((u_ice_aux(i)-uw)**2+(v_ice_aux(i)-vw)**2)
@@ -1191,9 +1215,9 @@ subroutine EVPdynamics_a(ice, partit, mesh)
     else if (discretization=='nc') then
         do i=1,myDim_edge2D
             nodes = edges(:,i)
-            a_ice_ed =  0.5_WP * (a_ice(nodes(1))  + a_ice(nodes(2)))
-            m_ice_ed =  0.5_WP * (m_ice(nodes(1))  + m_ice(nodes(2)))
-            m_snow_ed = 0.5_WP * (m_snow(nodes(1)) + m_snow(nodes(2)))
+            a_ice_ed =  0.5_WP * sum(a_ice(nodes))
+            m_ice_ed =  0.5_WP * sum(m_ice(nodes))
+            m_snow_ed = 0.5_WP * sum(m_snow(nodes))
 
             thickness=(rhoice*m_ice_ed+rhosno*m_snow_ed)/max(a_ice_ed,0.01_WP)
             thickness=max(thickness, 9.0_WP)   ! Limit if it is too small (0.01 m)
@@ -1217,9 +1241,9 @@ subroutine EVPdynamics_a(ice, partit, mesh)
                 uw = u_w(i)
                 coriolis = mesh%coriolis_node(i)
             else if (discretization=='nc') then
-                uw = 0.5_WP*(u_w(edges(1,i))+u_w(edges(2,i)))
-                vw = 0.5_WP*(v_w(edges(1,i))+v_w(edges(2,i)))
-                coriolis = 0.5_WP*(mesh%coriolis_node(edges(1,i))+mesh%coriolis_node(edges(2,i)))
+                uw = 0.5_WP*sum(u_w(edges(:,i)))
+                vw = 0.5_WP*sum(v_w(edges(:,i)))
+                coriolis = 0.5_WP*sum(mesh%coriolis_node(edges(:,i)))
             end if
 
             umod=sqrt((u_ice_aux(i)-uw)**2+(v_ice_aux(i)-vw)**2)
