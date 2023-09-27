@@ -552,7 +552,8 @@ subroutine EVPdynamics(ice, partit, mesh)
             if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
             nodes = edges(:,n)
 
-            a_ice_ed =  0.5_WP * sum(a_ice(nodes))
+            a_ice_ed =  1/3 * sum(elem_area(edge_tri(:,n)))
+            !# ??? right?
             m_ice_ed =  0.5_WP * sum(m_ice(nodes))
             m_snow_ed = 0.5_WP * sum(m_snow(nodes))
 
