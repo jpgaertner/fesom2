@@ -337,6 +337,7 @@ subroutine stress2rhs(ice, partit, mesh)
         END DO
         !$ACC END PARALLEL LOOP
     else if (discretization == 'nc') then
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
         DO n=1, myDim_edge2D
             !_______________________________________________________________________
             ! if cavity node skip it
@@ -351,6 +352,7 @@ subroutine stress2rhs(ice, partit, mesh)
                 V_rhs_ice(n) = 0._WP
             endif
         END DO
+        !$ACC END PARALLEL LOOP
     end if
 
 !$OMP END DO
@@ -501,8 +503,8 @@ subroutine EVPdynamics(ice, partit, mesh)
     !$ACC END PARALLEL LOOP
 !$OMP END PARALLEL DO
 
-!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(n)
     if (discretization == 'c') then
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(n)
         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
         do n=1,myDim_nod2D
             !_______________________________________________________________________
@@ -528,8 +530,10 @@ subroutine EVPdynamics(ice, partit, mesh)
             rhs_m(n)=0.0_WP       ! for the contribution due to ssh
         enddo
         !$ACC END PARALLEL LOOP
+!$OMP END PARALLEL DO
     else if (discretization == 'nc') then
-                !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(n)
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
         do n=1,myDim_edge2D
             !_______________________________________________________________________
             ! if cavity node skip it
@@ -559,9 +563,9 @@ subroutine EVPdynamics(ice, partit, mesh)
             rhs_m(n)=0.0_WP       ! for the contribution due to ssh
         enddo
         !$ACC END PARALLEL LOOP
+!$OMP END PARALLEL DO
     end if
 
-!$OMP END PARALLEL DO
 
     !___________________________________________________________________________
     use_pice=0
@@ -712,12 +716,14 @@ subroutine EVPdynamics(ice, partit, mesh)
         enddo
         !$ACC END PARALLEL LOOP
     else if (discretization == 'nc') then
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
         do n=1,myDim_edge2D
             if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
             area_ed = 1/3.0_WP*sum(elem_area(edge_tri(:,n)))
             rhs_a(n) = rhs_a(n)/area_ed
             rhs_m(n) = rhs_m(n)/area_ed
         end do
+        !$ACC END PARALLEL LOOP
     end if
 
 !$OMP END PARALLEL DO
