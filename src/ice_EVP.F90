@@ -67,6 +67,10 @@ subroutine stress_tensor(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: eps11, eps12, eps22
     real(kind=WP), dimension(:), pointer  :: sigma11, sigma12, sigma22
     real(kind=WP), dimension(:), pointer  :: ice_strength
+    !___________________________________________________________________________
+    character, pointer          :: discretization
+    real(kind=WP), allocatable  :: dx(:,:), dy(:,:)
+    integer, allocatable        :: placement(:,:)
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -80,6 +84,7 @@ subroutine stress_tensor(ice, partit, mesh)
     sigma12     => ice%work%sigma12(:)
     sigma22     => ice%work%sigma22(:)
     ice_strength=> ice%work%ice_strength(:)
+    discretization => ice%discretization
     !___________________________________________________________________________
     vale = 1.0_WP/(ice%ellipse**2)
     dte  = ice%ice_dt/(1.0_WP*ice%evp_rheol_steps)
@@ -87,6 +92,25 @@ subroutine stress_tensor(ice, partit, mesh)
     det2 = 1.0_WP/(1.0_WP + 0.5_WP*ice%Tevp_inv*dte) !*ellipse**2
 
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(el, r1, r2, r3, si1, si2, zeta, delta, delta_inv, d1, d2)
+
+    allocate(dx(3,myDim_elem2D))
+    allocate(dy(3,myDim_elem2D))
+    allocate(placement(3,myDim_elem2D))
+
+    if (discretization == 'c') then
+        do el=1,myDim_elem2D
+            dx(:,el) = gradient_sca(1:3,el)
+            dy(:,el) = gradient_sca(4:6,el)
+            placement(:,el) = elem2D_nodes(:,el)
+        end do
+    else if (discretization == 'nc') then
+        do el=1,myDim_elem2D
+            dx(:,el) = -2.0_WP * gradient_sca(1:3,el)
+            dy(:,el) = -2.0_WP * gradient_sca(4:6,el)
+            placement(:,el) = elem_edges(:,el)
+        end do
+    end if
+
 
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
     do el=1,myDim_elem2D
@@ -101,14 +125,14 @@ subroutine stress_tensor(ice, partit, mesh)
             ! =====
             ! ===== Deformation rate tensor on element elem:
                 !du/dx
-            eps11(el) = sum(gradient_sca(1:3,el)*U_ice(elem2D_nodes(1:3,el))) &
-                - metric_factor(el) * sum(V_ice(elem2D_nodes(1:3,el)))/3.0_WP
+            eps11(el) = sum(dx(:,el)*U_ice(placement(:,el))) &
+                - metric_factor(el) * sum(V_ice(placement(:,el)))/3.0_WP
 
-            eps22(el) = sum(gradient_sca(4:6, el)*V_ice(elem2D_nodes(1:3,el)))
+            eps22(el) = sum(dy(:,el)*V_ice(placement(:,el)))
 
-            eps12(el) = 0.5_WP*(sum(gradient_sca(4:6,el)*U_ice(elem2D_nodes(1:3,el))) &
-                        + sum(gradient_sca(1:3,el)*V_ice(elem2D_nodes(1:3,el))) &
-                        + metric_factor(el) * sum(U_ice(elem2D_nodes(1:3,el)))/3.0_WP)
+            eps12(el) = 0.5_WP*(sum(dy(:,el)*U_ice(placement(:,el))) &
+                        + sum(dx(:,el)*V_ice(placement(:,el))) &
+                        + metric_factor(el) * sum(U_ice(placement(:,el)))/3.0_WP)
             ! ===== moduli:
             delta = sqrt((eps11(el)*eps11(el) + eps22(el)*eps22(el))*(1.0_WP+vale) + 4.0_WP*vale*eps12(el)*eps12(el) + &
                                 2.0_WP*eps11(el)*eps22(el)*(1.0_WP-vale))
@@ -188,6 +212,11 @@ subroutine stress2rhs(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: sigma11, sigma12, sigma22
     real(kind=WP), dimension(:), pointer  :: u_rhs_ice, v_rhs_ice, rhs_a, rhs_m
     real(kind=WP), dimension(:), pointer  :: inv_areamass, ice_strength
+    !___________________________________________________________________________
+    character, pointer          :: discretization
+    real(kind=WP), allocatable  :: dx(:,:), dy(:,:)
+    integer, allocatable        :: placement(:,:)
+    integer                     :: dim
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -201,15 +230,35 @@ subroutine stress2rhs(ice, partit, mesh)
     rhs_m        => ice%data(2)%values_rhs(:)
     inv_areamass => ice%work%inv_areamass(:)
     ice_strength => ice%work%ice_strength(:)
-
+    discretization => ice%discretization
     !___________________________________________________________________________
     val3=1/3.0_WP
 
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(n, el, k)
 !$OMP DO
 
+    allocate(dx(3,myDim_elem2D))
+    allocate(dy(3,myDim_elem2D))
+    allocate(placement(3,myDim_elem2D))
+
+    if (discretization == 'c') then
+        do el=1,myDim_elem2D
+            dx(:,el) = gradient_sca(1:3,el)
+            dy(:,el) = gradient_sca(4:6,el)
+            placement(:,el) = elem2D_nodes(:,el)
+            dim = myDim_nod2D
+        end do
+    else if (discretization == 'nc') then
+        do el=1,myDim_elem2D
+            dx(:,el) = -2.0_WP * gradient_sca(1:3,el)
+            dy(:,el) = -2.0_WP * gradient_sca(4:6,el)
+            placement(:,el) = elem_edges(:,el)
+            dim = myDim_edge2D
+        end do
+    end if
+
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    DO  n=1, myDim_nod2D
+    DO  n=1, dim
         U_rhs_ice(n)=0.0_WP
         V_rhs_ice(n)=0.0_WP
     END DO
@@ -240,17 +289,17 @@ subroutine stress2rhs(ice, partit, mesh)
 #if !defined(DISABLE_OPENACC_ATOMICS)
                 !$ACC ATOMIC UPDATE
 #endif
-                U_rhs_ice(elem2D_nodes(k,el)) = U_rhs_ice(elem2D_nodes(k,el)) &
+                U_rhs_ice(placement(k,el)) = U_rhs_ice(placement(k,el)) &
                 - elem_area(el) * &
-                    (sigma11(el)*gradient_sca(k,el) + sigma12(el)*gradient_sca(k+3,el) &
+                    (sigma11(el)*dx(k,el) + sigma12(el)*dy(k,el) &
                     +sigma12(el)*val3*metric_factor(el))            !metrics
 
 #if !defined(DISABLE_OPENACC_ATOMICS)
                 !$ACC ATOMIC UPDATE
 #endif
-                V_rhs_ice(elem2D_nodes(k,el)) = V_rhs_ice(elem2D_nodes(k,el)) &
+                V_rhs_ice(placement(k,el)) = V_rhs_ice(placement(k,el)) &
                     - elem_area(el) * &
-                    (sigma12(el)*gradient_sca(k,el) + sigma22(el)*gradient_sca(k+3,el) &
+                    (sigma12(el)*dx(k,el) + sigma22(el)*dy(k,el) &
                     -sigma11(el)*val3*metric_factor(el))
 
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
@@ -270,22 +319,39 @@ subroutine stress2rhs(ice, partit, mesh)
 !$OMP END DO
 !$OMP DO
 
-    !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    DO n=1, myDim_nod2D
-        !_______________________________________________________________________
-        ! if cavity node skip it
-        if (ulevels_nod2d(n)>1) cycle
+    if (discretization == 'c') then
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+        DO n=1, myDim_nod2D
+            !_______________________________________________________________________
+            ! if cavity node skip it
+            if (ulevels_nod2d(n)>1) cycle
 
-        !_______________________________________________________________________
-        if (inv_areamass(n) > 0._WP) then
-            U_rhs_ice(n) = U_rhs_ice(n)*inv_areamass(n) + rhs_a(n)
-            V_rhs_ice(n) = V_rhs_ice(n)*inv_areamass(n) + rhs_m(n)
-        else
-            U_rhs_ice(n) = 0._WP
-            V_rhs_ice(n) = 0._WP
-        endif
-    END DO
-    !$ACC END PARALLEL LOOP
+            !_______________________________________________________________________
+            if (inv_areamass(n) > 0._WP) then
+                U_rhs_ice(n) = U_rhs_ice(n)*inv_areamass(n) + rhs_a(n)
+                V_rhs_ice(n) = V_rhs_ice(n)*inv_areamass(n) + rhs_m(n)
+            else
+                U_rhs_ice(n) = 0._WP
+                V_rhs_ice(n) = 0._WP
+            endif
+        END DO
+        !$ACC END PARALLEL LOOP
+    else if (discretization == 'nc') then
+        DO n=1, myDim_edge2D
+            !_______________________________________________________________________
+            ! if cavity node skip it
+            if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+
+            !_______________________________________________________________________
+            if (inv_areamass(n) > 0._WP) then
+                U_rhs_ice(n) = U_rhs_ice(n)*inv_areamass(n) + rhs_a(n)
+                V_rhs_ice(n) = V_rhs_ice(n)*inv_areamass(n) + rhs_m(n)
+            else
+                U_rhs_ice(n) = 0._WP
+                V_rhs_ice(n) = 0._WP
+            endif
+        END DO
+    end if
 
 !$OMP END DO
 !$OMP END PARALLEL
@@ -325,7 +391,7 @@ subroutine EVPdynamics(ice, partit, mesh)
 
     real(kind=WP)   :: eta, delta
     integer         :: k
-    real(kind=WP)   :: vale, dx(3), dy(3), val3
+    real(kind=WP)   :: vale, val3
     real(kind=WP)   :: det1, det2, r1, r2, r3, si1, si2, dte
     real(kind=WP)   :: zeta, delta_inv, d1, d2
     INTEGER         :: elem
@@ -342,6 +408,12 @@ subroutine EVPdynamics(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: a_ice_old, m_ice_old, m_snow_old
 #endif
     real(kind=WP)              , pointer  :: inv_rhowat, rhosno, rhoice
+    !___________________________________________________________________________
+    character, pointer          :: discretization
+    real(kind=WP), allocatable  :: dx(:,:), dy(:,:)
+    real(kind=WP)               :: m_ice_ed, m_snow_ed, a_ice_ed, area_ed, uw, vw, stx, sty, cor
+    integer, allocatable        :: placement(:,:)
+    integer                     :: dim, halo_dim
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -374,6 +446,7 @@ subroutine EVPdynamics(ice, partit, mesh)
     inv_areamass    => ice%work%inv_areamass(:)
     inv_mass        => ice%work%inv_mass(:)
     ice_strength    => ice%work%ice_strength(:)
+    discretization  => ice%discretization
 
     !___________________________________________________________________________
     ! If Icepack is used, always update the tracers
@@ -395,9 +468,31 @@ subroutine EVPdynamics(ice, partit, mesh)
     !___________________________________________________________________________
     ! Precompute values that are never changed during the iteration
 
+    allocate(dx(3,myDim_elem2D))
+    allocate(dy(3,myDim_elem2D))
+    allocate(placement(3,myDim_elem2D))
+
+    if (discretization == 'c') then
+        do el=1,myDim_elem2D
+            dx(:,el) = gradient_sca(1:3,el)
+            dy(:,el) = gradient_sca(4:6,el)
+            placement(:,el) = elem2D_nodes(:,el)
+            dim = myDim_nod2D
+            halo_dim = eDim_nod2D
+        end do
+    else if (discretization == 'nc') then
+        do el=1,myDim_elem2D
+            dx(:,el) = -2.0_WP * gradient_sca(1:3,el)
+            dy(:,el) = -2.0_WP * gradient_sca(4:6,el)
+            placement(:,el) = elem_edges(:,el)
+            dim = myDim_edge2D
+            halo_dim = eDim_edge2D
+        end do
+    end if
+
 !$OMP PARALLEL DO
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    do n=1, myDim_nod2D+eDim_nod2D
+    do n=1,dim+halo_dim
        inv_areamass(n) =0.0_WP
        inv_mass(n)     =0.0_WP
        rhs_a(n)        =0.0_WP
@@ -407,31 +502,65 @@ subroutine EVPdynamics(ice, partit, mesh)
 !$OMP END PARALLEL DO
 
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(n)
-    !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    do n=1,myDim_nod2D
-        !_______________________________________________________________________
-        ! if cavity node skip it
-        if (ulevels_nod2d(n)>1) cycle
+    if (discretization == 'c') then
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+        do n=1,myDim_nod2D
+            !_______________________________________________________________________
+            ! if cavity node skip it
+            if (ulevels_nod2d(n)>1) cycle
 
-        !_______________________________________________________________________
-        if ((rhoice*m_ice(n)+rhosno*m_snow(n)) > 1.e-3_WP) then
-            inv_areamass(n) = 1._WP/(area(1,n)*(rhoice*m_ice(n)+rhosno*m_snow(n)))
-        else
-            inv_areamass(n) = 0._WP
-        endif
+            !_______________________________________________________________________
+            if ((rhoice*m_ice(n)+rhosno*m_snow(n)) > 1.e-3_WP) then
+                inv_areamass(n) = 1._WP/(area(1,n)*(rhoice*m_ice(n)+rhosno*m_snow(n)))
+            else
+                inv_areamass(n) = 0._WP
+            endif
 
-        if (a_ice(n) < 0.01_WP) then
-            ! Skip if ice is absent
-            inv_mass(n) = 0._WP
-        else
-            inv_mass(n) = (rhoice*m_ice(n)+rhosno*m_snow(n))/a_ice(n)
-            inv_mass(n) = 1.0_WP/max(inv_mass(n), 9.0_WP)        ! Limit the mass
-                                        ! if it is too small
-        endif
-        rhs_a(n)=0.0_WP       ! these are used as temporal storage here
-        rhs_m(n)=0.0_WP       ! for the contribution due to ssh
-    enddo
-    !$ACC END PARALLEL LOOP
+            if (a_ice(n) < 0.01_WP) then
+                ! Skip if ice is absent
+                inv_mass(n) = 0._WP
+            else
+                inv_mass(n) = (rhoice*m_ice(n)+rhosno*m_snow(n))/a_ice(n)
+                inv_mass(n) = 1.0_WP/max(inv_mass(n), 9.0_WP)        ! Limit the mass
+                                            ! if it is too small
+            endif
+            rhs_a(n)=0.0_WP       ! these are used as temporal storage here
+            rhs_m(n)=0.0_WP       ! for the contribution due to ssh
+        enddo
+        !$ACC END PARALLEL LOOP
+    else if (discretization == 'nc') then
+                !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+        do n=1,myDim_edge2D
+            !_______________________________________________________________________
+            ! if cavity node skip it
+            if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+
+            m_ice_ed = 0.5_WP*sum(m_ice(edges(:,n)))
+            m_snow_ed = 0.5_WP*sum(m_snow(edges(:,n)))
+            a_ice_ed = 0.5_WP*sum(a_ice(edges(:,n)))
+            area_ed = 1/3.0_WP*sum(elem_area(edge_tri(:,n)))
+
+            !_______________________________________________________________________
+            if ((rhoice*m_ice_ed+rhosno*m_snow_ed) > 1.e-3_WP) then
+                inv_areamass(n) = 1._WP/(area_ed*(rhoice*m_ice_ed+rhosno*m_snow_ed))
+            else
+                inv_areamass(n) = 0._WP
+            endif
+
+            if (a_ice_ed < 0.01_WP) then
+                ! Skip if ice is absent
+                inv_mass(n) = 0._WP
+            else
+                inv_mass(n) = (rhoice*m_ice_ed+rhosno*m_snow_ed)/a_ice_ed
+                inv_mass(n) = 1.0_WP/max(inv_mass(n), 9.0_WP)        ! Limit the mass
+                                            ! if it is too small
+            endif
+            rhs_a(n)=0.0_WP       ! these are used as temporal storage here
+            rhs_m(n)=0.0_WP       ! for the contribution due to ssh
+        enddo
+        !$ACC END PARALLEL LOOP
+    end if
+
 !$OMP END PARALLEL DO
 
     !___________________________________________________________________________
@@ -498,11 +627,11 @@ subroutine EVPdynamics(ice, partit, mesh)
 #if !defined(DISABLE_OPENACC_ATOMICS)
                     !$ACC ATOMIC UPDATE
 #endif
-                    rhs_a(elnodes(k)) = rhs_a(elnodes(k))-aa*elevation_dx
+                    rhs_a(placement(k,el)) = rhs_a(placement(k,el))-aa*elevation_dx
 #if !defined(DISABLE_OPENACC_ATOMICS)
                     !$ACC ATOMIC UPDATE
 #endif
-                    rhs_m(elnodes(k)) = rhs_m(elnodes(k))-aa*elevation_dy
+                    rhs_m(placement(k,el)) = rhs_m(placement(k,el))-aa*elevation_dy
                 end do
             end if
         enddo
@@ -556,11 +685,11 @@ subroutine EVPdynamics(ice, partit, mesh)
 #if !defined(DISABLE_OPENACC_ATOMICS)
                     !$ACC ATOMIC UPDATE
 #endif
-                    rhs_a(elnodes(k)) = rhs_a(elnodes(k))-aa*elevation_dx
+                    rhs_a(placement(k,el)) = rhs_a(placement(k,el))-aa*elevation_dx
 #if !defined(DISABLE_OPENACC_ATOMICS)
                     !$ACC ATOMIC UPDATE
 #endif
-                    rhs_m(elnodes(k)) = rhs_m(elnodes(k))-aa*elevation_dy
+                    rhs_m(placement(k,el)) = rhs_m(placement(k,el))-aa*elevation_dy
                 end do
             end if
         enddo
@@ -574,13 +703,22 @@ subroutine EVPdynamics(ice, partit, mesh)
 !$OMP PARALLEL DO
 
     !___________________________________________________________________________
-    !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-    do n=1,myDim_nod2D
-        if (ulevels_nod2d(n)>1) cycle
-        rhs_a(n) = rhs_a(n)/area(1,n)
-        rhs_m(n) = rhs_m(n)/area(1,n)
-    enddo
-    !$ACC END PARALLEL LOOP
+    if (discretization == 'c') then
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+        do n=1,myDim_nod2D
+            if (ulevels_nod2d(n)>1) cycle
+            rhs_a(n) = rhs_a(n)/area(1,n)
+            rhs_m(n) = rhs_m(n)/area(1,n)
+        enddo
+        !$ACC END PARALLEL LOOP
+    else if (discretization == 'nc') then
+        do n=1,myDim_edge2D
+            if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+            area_ed = 1/3.0_WP*sum(elem_area(edge_tri(:,n)))
+            rhs_a(n) = rhs_a(n)/area_ed
+            rhs_m(n) = rhs_m(n)/area_ed
+        end do
+    end if
 
 !$OMP END PARALLEL DO
     !___________________________________________________________________________
@@ -600,13 +738,14 @@ subroutine EVPdynamics(ice, partit, mesh)
 !$OMP DO
 
         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
-        do n=1,myDim_nod2D+eDim_nod2D
+        do n=1,dim+halo_dim
            U_ice_old(n) = U_ice(n) !PS
            V_ice_old(n) = V_ice(n) !PS
         end do
         !$ACC END PARALLEL LOOP
 !$OMP END DO
 
+        if (discretization == 'c') then
 !$OMP DO
         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
         do n=1,myDim_nod2D
@@ -636,6 +775,44 @@ subroutine EVPdynamics(ice, partit, mesh)
         end do
         !$ACC END PARALLEL LOOP
 !$OMP END DO
+        else if (discretization == 'nc') then
+!$OMP DO
+        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
+            do n=1,myDim_edge2D
+                !___________________________________________________________________
+                ! if cavity edge skip it
+                if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+    
+                !___________________________________________________________________
+                a_ice_ed = 0.5_WP*sum(a_ice(edges(:,n)))
+                if (a_ice_ed >= 0.01_WP) then               ! Skip if ice is absent
+                    uw = 0.5_WP*sum(U_w(edges(:,n)))
+                    vw = 0.5_WP*sum(V_w(edges(:,n)))
+                    stx = 0.5_WP*sum(stress_atmice_x(edges(:,n)))
+                    sty = 0.5_WP*sum(stress_atmice_y(edges(:,n)))
+
+                    umod = sqrt((U_ice(n)-uw)**2+(V_ice(n)-vw)**2)
+                    drag = ice%cd_oce_ice*umod*density_0*inv_mass(n)
+    
+                    rhsu = U_ice(n) +rdt*(drag*(ax*uw - ay*vw)+ &
+                            inv_mass(n)*stx + U_rhs_ice(n))
+                    rhsv = V_ice(n) +rdt*(drag*(ax*vw + ay*uw)+ &
+                            inv_mass(n)*sty + V_rhs_ice(n))
+    
+                    r_a      = 1._WP + ax*drag*rdt
+                    cor      = 0.5_WP*sum(mesh%coriolis_node(edges(:,n)))
+                    r_b      = rdt*(cor + ay*drag)
+                    det      = 1.0_WP/(r_a*r_a + r_b*r_b)
+                    U_ice(n) = det*(r_a*rhsu +r_b*rhsv)
+                    V_ice(n) = det*(r_a*rhsv -r_b*rhsu)
+                else  ! Set velocities to 0 if ice is absent
+                    U_ice(n) = 0.0_WP
+                    V_ice(n) = 0.0_WP
+                end if
+            end do
+            !$ACC END PARALLEL LOOP
+    !$OMP END DO
+        end if
         !_______________________________________________________________________
         ! apply sea ice velocity boundary condition
 
@@ -646,8 +823,13 @@ subroutine EVPdynamics(ice, partit, mesh)
             !___________________________________________________________________
             ! apply coastal sea ice velocity boundary conditions
             if(myList_edge2D(ed) > edge2D_in) then
-                U_ice(edges(1:2,ed))=0.0_WP
-                V_ice(edges(1:2,ed))=0.0_WP
+                if (discretization == 'c') then
+                    U_ice(edges(1:2,ed))=0.0_WP
+                    V_ice(edges(1:2,ed))=0.0_WP
+                else if (discretization == 'nc') then
+                    U_ice(ed)=0.0_WP
+                    V_ice(ed)=0.0_WP
+                end if
             endif
 
             !___________________________________________________________________
