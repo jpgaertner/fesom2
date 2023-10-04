@@ -340,8 +340,8 @@ subroutine stress2rhs(ice, partit, mesh)
         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
         DO n=1, myDim_edge2D
             !_______________________________________________________________________
-            ! if cavity node skip it
-            if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+            ! if cavity edge skip it
+            if (.not.all(ulevels(edge_tri(:,n))==[1,1])) cycle
 
             !_______________________________________________________________________
             if (inv_areamass(n) > 0._WP) then
@@ -536,8 +536,8 @@ subroutine EVPdynamics(ice, partit, mesh)
         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
         do n=1,myDim_edge2D
             !_______________________________________________________________________
-            ! if cavity node skip it
-            if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+            ! if cavity edge skip it
+            if (.not.all(ulevels(edge_tri(:,n))==[1,1])) cycle
 
             m_ice_ed = 0.5_WP*sum(m_ice(edges(:,n)))
             m_snow_ed = 0.5_WP*sum(m_snow(edges(:,n)))
@@ -718,7 +718,7 @@ subroutine EVPdynamics(ice, partit, mesh)
     else if (discretization == 'nc') then
         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT)
         do n=1,myDim_edge2D
-            if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+            if (.not.all(ulevels(edge_tri(:,n))==[1,1])) cycle
             area_ed = 1/3.0_WP*sum(elem_area(edge_tri(:,n)))
             rhs_a(n) = rhs_a(n)/area_ed
             rhs_m(n) = rhs_m(n)/area_ed
@@ -787,7 +787,7 @@ subroutine EVPdynamics(ice, partit, mesh)
             do n=1,myDim_edge2D
                 !___________________________________________________________________
                 ! if cavity edge skip it
-                if (.not.all(ulevels_nod2D(edge_tri(:,n))==[1,1])) cycle
+                if (.not.all(ulevels(edge_tri(:,n))==[1,1])) cycle
     
                 !___________________________________________________________________
                 a_ice_ed = 0.5_WP*sum(a_ice(edges(:,n)))
