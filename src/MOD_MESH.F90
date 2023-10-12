@@ -50,7 +50,7 @@ real(kind=WP), allocatable, dimension(:,:)  :: gradient_vec
                                                            ! of velocities on elements
 real(kind=WP), allocatable, dimension(:,:)  :: gradient_sca ! Coefficients to compute gradient of scalars
                                                            ! on elements
-INTEGER,       ALLOCATABLE, DIMENSION(:)    :: bc_index_nod2D(:)
+INTEGER,       ALLOCATABLE, DIMENSION(:)    :: bc_index_2D(:)
                                                            ! vertical structure
 !
 !
@@ -206,7 +206,7 @@ subroutine write_t_mesh(mesh, unit, iostat, iomsg)
     call write_bin_array(mesh%depth,               unit, iostat, iomsg)
     call write_bin_array(mesh%gradient_vec,        unit, iostat, iomsg)
     call write_bin_array(mesh%gradient_sca,        unit, iostat, iomsg)
-    call write_bin_array(mesh%bc_index_nod2D,      unit, iostat, iomsg)
+    call write_bin_array(mesh%bc_index_2D,      unit, iostat, iomsg)
 
     write(unit, iostat=iostat, iomsg=iomsg) mesh%nl
 
@@ -302,7 +302,7 @@ subroutine read_t_mesh(mesh, unit, iostat, iomsg)
     call read_bin_array(mesh%depth,               unit, iostat, iomsg)
     call read_bin_array(mesh%gradient_vec,        unit, iostat, iomsg)
     call read_bin_array(mesh%gradient_sca,        unit, iostat, iomsg)
-    call read_bin_array(mesh%bc_index_nod2D,      unit, iostat, iomsg)
+    call read_bin_array(mesh%bc_index_2D,      unit, iostat, iomsg)
 
     read(unit, iostat=iostat, iomsg=iomsg) mesh%nl
 
