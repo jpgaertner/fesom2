@@ -100,13 +100,17 @@ subroutine ice_TG_rhs(ice, partit, mesh)
     type(t_partit), intent(inout), target :: partit
     type(t_mesh),   intent(in),    target :: mesh
     !___________________________________________________________________________
-    real(kind=WP)   :: diff, entries(3),  um, vm, vol, dx(3), dy(3)
+    real(kind=WP)   :: diff, entries(3),  um, vm, vol
     integer         :: n, q, row, elem, elnodes(3)
     !___________________________________________________________________________
     ! pointer on necessary derived types
     real(kind=WP), dimension(:), pointer  :: u_ice, v_ice
     real(kind=WP), dimension(:), pointer  :: a_ice, m_ice, m_snow
     real(kind=WP), dimension(:), pointer  :: rhs_a, rhs_m, rhs_ms
+    !___________________________________________________________________________
+    character, pointer                              :: discretization
+    real(kind=WP), dimension(3,partit%myDim_elem2D) :: dx, dy
+    integer, dimension(3,partit%myDim_elem2D)       :: placement
 #if defined (__oifs) || defined (__ifsinterface)
     real(kind=WP), dimension(:), pointer  :: ice_temp, rhs_temp
 #endif
@@ -126,6 +130,7 @@ subroutine ice_TG_rhs(ice, partit, mesh)
     ice_temp => ice%data(4)%values(:)
     rhs_temp => ice%data(4)%values_rhs(:)
 #endif
+    discretization => ice%discretization
     !___________________________________________________________________________
     ! Taylor-Galerkin (Lax-Wendroff) rhs
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(n, q, row, elem, elnodes, diff, entries,  um, vm, vol, dx, dy)
@@ -139,6 +144,21 @@ subroutine ice_TG_rhs(ice, partit, mesh)
 #endif /* (__oifs) */
     END DO
 !$OMP END DO
+
+    if (discretization == 'c') then
+        do elem=1,myDim_elem2D
+            dx(:,elem) = gradient_sca(1:3,elem)
+            dy(:,elem) = gradient_sca(4:6,elem)
+            placement(:,elem) = elem2D_nodes(:,elem)
+        end do
+    else if (discretization == 'nc') then
+        do elem=1,myDim_elem2D
+            dx(:,elem) = -2.0_WP * gradient_sca(1:3,elem)
+            dy(:,elem) = -2.0_WP * gradient_sca(4:6,elem)
+            placement(:,elem) = elem_edges(:,elem)
+        end do
+    end if
+
     ! Velocities at nodes
 !$OMP DO
     do elem=1,myDim_elem2D          !assembling rhs over elements
@@ -148,13 +168,11 @@ subroutine ice_TG_rhs(ice, partit, mesh)
         if (ulevels(elem)>1) cycle
 
         !derivatives
-        dx=gradient_sca(1:3,elem)
-        dy=gradient_sca(4:6,elem)
         vol=elem_area(elem)
         !um=sum(U_ice(elnodes))/3.0_WP
         !vm=sum(V_ice(elnodes))/3.0_WP
-        um=sum(U_ice(elnodes))
-        vm=sum(V_ice(elnodes))
+        um=sum(U_ice(placement(:,elem)))
+        vm=sum(V_ice(placement(:,elem)))
 
         !diffusivity
         diff=ice%ice_diff*sqrt(elem_area(elem)/scale_area)
@@ -164,10 +182,10 @@ subroutine ice_TG_rhs(ice, partit, mesh)
                 !entries(q)= vol*dt*((dx(n)*um+dy(n)*vm)/3.0_WP - &
                 !            diff*(dx(n)*dx(q)+ dy(n)*dy(q))- &
                 !	       0.5*dt*(um*dx(n)+vm*dy(n))*(um*dx(q)+vm*dy(q)))
-                entries(q)= vol*ice%ice_dt*((dx(n)*(um+u_ice(elnodes(q)))+ &
-                            dy(n)*(vm+v_ice(elnodes(q))))/12.0_WP - &
-                            diff*(dx(n)*dx(q)+ dy(n)*dy(q))- &
-                            0.5_WP*ice%ice_dt*(um*dx(n)+vm*dy(n))*(um*dx(q)+vm*dy(q))/9.0_WP)
+                entries(q)= vol*ice%ice_dt*((dx(n,elem)*(um+u_ice(placement(q,elem)))+ &
+                            dy(n,elem)*(vm+v_ice(placement(q,elem))))/12.0_WP - &
+                            diff*(dx(n,elem)*dx(q,elem)+ dy(n,elem)*dy(q,elem))- &
+                            0.5_WP*ice%ice_dt*(um*dx(n,elem)+vm*dy(n,elem))*(um*dx(q,elem)+vm*dy(q,elem))/9.0_WP)
             END DO
             rhs_m(row)=rhs_m(row)+sum(entries*m_ice(elnodes))
             rhs_a(row)=rhs_a(row)+sum(entries*a_ice(elnodes))
