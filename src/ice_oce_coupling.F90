@@ -76,6 +76,11 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
     ! pointer on necessary derived types
     real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, a_ice, u_w, v_w
     real(kind=WP), dimension(:), pointer  :: stress_iceoce_x, stress_iceoce_y  
+    !___________________________________________________________________________
+    character, pointer  :: discretization
+    real(kind=WP)       :: a_ice_ed, uw, vw
+    real(kind=WP), dimension(partit%myDim_edge2D+partit%eDim_edge2D) :: stress_edge_surf_x, stress_edge_surf_y
+    integer             :: eledges(3)
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -87,6 +92,7 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
     v_w             => ice%srfoce_v(:)
     stress_iceoce_x => ice%stress_iceoce_x(:)
     stress_iceoce_y => ice%stress_iceoce_y(:)
+    discretization  => ice%discretization
   
     ! ==================
     ! momentum flux:
@@ -101,46 +107,110 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
     ! compute total surface stress (iceoce+atmoce) on nodes 
 
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(n, elem, elnodes, n1, aux)
+    if (discretization == 'c') then
 !$OMP DO
-    do n=1,myDim_nod2D+eDim_nod2D   
-        !_______________________________________________________________________
-        ! if cavity node skip it 
-        if (ulevels_nod2d(n)>1) cycle
-        
-        !_______________________________________________________________________
-        if(a_ice(n)>0.001_WP) then
-            aux=sqrt((u_ice(n)-u_w(n))**2+(v_ice(n)-v_w(n))**2)*density_0*ice%cd_oce_ice
-            stress_iceoce_x(n) = aux * (u_ice(n)-u_w(n))
-            stress_iceoce_y(n) = aux * (v_ice(n)-v_w(n))
-        else
-            stress_iceoce_x(n)=0.0_WP
-            stress_iceoce_y(n)=0.0_WP
-        end if
-        
-        stress_node_surf(1,n) = stress_iceoce_x(n)*a_ice(n) + stress_atmoce_x(n)*(1.0_WP-a_ice(n))
-        stress_node_surf(2,n) = stress_iceoce_y(n)*a_ice(n) + stress_atmoce_y(n)*(1.0_WP-a_ice(n))
-    end do
+        do n=1,myDim_nod2D+eDim_nod2D   
+            !_______________________________________________________________________
+            ! if cavity node skip it 
+            if (ulevels_nod2d(n)>1) cycle
+            
+            !_______________________________________________________________________
+            if(a_ice(n)>0.001_WP) then
+                aux=sqrt((u_ice(n)-u_w(n))**2+(v_ice(n)-v_w(n))**2)*density_0*ice%cd_oce_ice
+                stress_iceoce_x(n) = aux * (u_ice(n)-u_w(n))
+                stress_iceoce_y(n) = aux * (v_ice(n)-v_w(n))
+            else
+                stress_iceoce_x(n)=0.0_WP
+                stress_iceoce_y(n)=0.0_WP
+            end if
+            
+            stress_node_surf(1,n) = stress_iceoce_x(n)*a_ice(n) + stress_atmoce_x(n)*(1.0_WP-a_ice(n))
+            stress_node_surf(2,n) = stress_iceoce_y(n)*a_ice(n) + stress_atmoce_y(n)*(1.0_WP-a_ice(n))
+        end do
 !$OMP END DO
+    else if (discretization == 'nc') then
+!$OMP DO
+        do n=1,myDim_edge2D+eDim_edge2D
+            !_______________________________________________________________________
+            ! if cavity edge skip it 
+            if (.not.all(ulevels(edge_tri(:,n))==[1,1])) cycle
+
+            !_______________________________________________________________________
+            a_ice_ed = 0.5_WP*sum(a_ice(edges(:,n)))
+            if(a_ice_ed>0.001_WP) then
+                uw = 0.5_WP*sum(u_w(edges(:,n)))
+                vw = 0.5_WP*sum(v_w(edges(:,n)))
+                !# TODO ask dima about how to get the ocean velocities element
+                ! wise. they are defined on elements and then only averaged to
+                ! nodes. directly averaging them from elements to edges is
+                ! more accurate (much less averaging)
+
+                aux=sqrt((u_ice(n)-uw)**2+(v_ice(n)-vw)**2)*density_0*ice%cd_oce_ice
+                stress_iceoce_x(n) = aux * (u_ice(n)-uw)
+                stress_iceoce_y(n) = aux * (v_ice(n)-vw)
+            else
+                stress_iceoce_x(n)=0.0_WP
+                stress_iceoce_y(n)=0.0_WP
+            end if
+                stress_edge_surf_x(n) = stress_iceoce_x(n)*a_ice_ed + stress_atmoce_x(n)*(1.0_WP-a_ice_ed)
+                stress_edge_surf_y(n) = stress_iceoce_y(n)*a_ice_ed + stress_atmoce_y(n)*(1.0_WP-a_ice_ed)
+        end do
+
+        do n=1,myDim_edge2D+eDim_edge2D
+            stress_node_surf(1,edges(:,n)) = 0.0_WP
+            stress_node_surf(2,edges(:,n)) = 0.0_WP
+        end do
+
+        do n=1,myDim_edge2D+eDim_edge2D
+            stress_node_surf(1,edges(:,n)) = stress_node_surf(1,edges(:,n)) + stress_edge_surf_x(n)
+            stress_node_surf(2,edges(:,n)) = stress_node_surf(2,edges(:,n)) + stress_edge_surf_y(n)
+        end do
+
+        do n=1,myDim_nod2D
+            stress_node_surf(1,n) = stress_node_surf(1,n)/mesh%nn_num(n)
+            stress_node_surf(2,n) = stress_node_surf(2,n)/mesh%nn_num(n)
+            !# TODO check if stress_node_surf is used on eDim_nod2D. if yes,
+            ! an exchange routine needs to be called
+        end do
+!$OMP END DO
+    end if
+
     !___________________________________________________________________________
     ! compute total surface stress (iceoce+atmoce) on elements
 !$OMP DO
-    DO elem=1,myDim_elem2D
-        !_______________________________________________________________________
-        ! if cavity element skip it 
-        if (ulevels(elem)>1) cycle
-        
-        !_______________________________________________________________________
-        elnodes=elem2D_nodes(:,elem)
-        stress_surf(1,elem)=sum(stress_iceoce_x(elnodes)*a_ice(elnodes) + &
-                                stress_atmoce_x(elnodes)*(1.0_WP-a_ice(elnodes)))/3.0_WP
-        stress_surf(2,elem)=sum(stress_iceoce_y(elnodes)*a_ice(elnodes) + &
-                                stress_atmoce_y(elnodes)*(1.0_WP-a_ice(elnodes)))/3.0_WP
-    END DO
+    if (discretization == 'c') then
+        DO elem=1,myDim_elem2D
+            !_______________________________________________________________________
+            ! if cavity element skip it 
+            if (ulevels(elem)>1) cycle
+
+            !_______________________________________________________________________
+            elnodes=elem2D_nodes(:,elem)
+            stress_surf(1,elem)=sum(stress_iceoce_x(elnodes)*a_ice(elnodes) + &
+                                    stress_atmoce_x(elnodes)*(1.0_WP-a_ice(elnodes)))/3.0_WP
+            stress_surf(2,elem)=sum(stress_iceoce_y(elnodes)*a_ice(elnodes) + &
+                                    stress_atmoce_y(elnodes)*(1.0_WP-a_ice(elnodes)))/3.0_WP
+        END DO
+    else if (discretization == 'nc') then
+        DO elem=1,myDim_elem2D
+            !_______________________________________________________________________
+            ! if cavity element skip it 
+            if (ulevels(elem)>1) cycle
+
+            !_______________________________________________________________________
+            eledges=elem_edges(:,elem)
+            a_ice_ed = 0.5_WP*sum(a_ice(edges(:,n)))
+            stress_surf(1,elem)=sum(stress_iceoce_x(eledges)*a_ice_ed + &
+                                    stress_atmoce_x(eledges)*(1.0_WP-a_ice_ed))/3.0_WP
+            stress_surf(2,elem)=sum(stress_iceoce_y(eledges)*a_ice_ed + &
+                                    stress_atmoce_y(eledges)*(1.0_WP-a_ice_ed))/3.0_WP
+        END DO
+    end if
 !$OMP END DO
 !$OMP END PARALLEL
     !___________________________________________________________________________
     if (use_cavity) call cavity_momentum_fluxes(dynamics, partit, mesh)
-  
+
 end subroutine oce_fluxes_mom
 !
 !
