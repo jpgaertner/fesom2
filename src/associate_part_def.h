@@ -1,6 +1,7 @@
 
   integer,          pointer     :: MPI_COMM_FESOM ! FESOM communicator (for ocean only runs if often a copy of MPI_COMM_WORLD)
   type(com_struct), pointer     :: com_nod2D
+  type(com_struct), pointer     :: com_edge2D
   type(com_struct), pointer     :: com_elem2D
   type(com_struct), pointer     :: com_elem2D_full
   integer                       :: ub, lb ! to work with r(s)_mpitype_elem3D(nod3D)
@@ -35,5 +36,6 @@
 
   integer, dimension(:), pointer  ::  remPtr_nod2D(:),  remList_nod2D(:)
   integer, dimension(:), pointer  ::  remPtr_elem2D(:), remList_elem2D(:)
+  integer, dimension(:), pointer  ::  remPtr_edge2D(:), remList_edge2D(:)
 
   logical, pointer                :: elem_full_flag

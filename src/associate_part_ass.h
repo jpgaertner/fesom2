@@ -1,5 +1,6 @@
 MPI_COMM_FESOM  => partit%MPI_COMM_FESOM
 com_nod2D       => partit%com_nod2D
+com_edge2D      => partit%com_edge2D
 com_elem2D      => partit%com_elem2D
 com_elem2D_full => partit%com_elem2D_full
 myDim_nod2D     => partit%myDim_nod2D
@@ -34,6 +35,11 @@ remPtr_elem2D (1:npes)                => partit%remPtr_elem2D(:)
 remList_elem2D(1:remPtr_elem2D(npes)) => partit%remList_elem2D(:)
 end if
 
+if (allocated(partit%remPtr_edge2D)) then
+remPtr_edge2D (1:npes)                => partit%remPtr_edge2D(:)
+remList_edge2D(1:remPtr_edge2D(npes)) => partit%remList_edge2D(:)
+end if
+
 s_mpitype_elem2D(1:com_elem2D%sPEnum, 1:4) => partit%s_mpitype_elem2D(:,:)
 r_mpitype_elem2D(1:com_elem2D%rPEnum, 1:4) => partit%r_mpitype_elem2D(:,:)
 
@@ -60,3 +66,6 @@ r_mpitype_nod2D_i(1:com_nod2D%rPEnum) => partit%r_mpitype_nod2D_i(:)
 
 s_mpitype_nod3D(1:com_nod2D%sPEnum, lb:ub, 1:3) => partit%s_mpitype_nod3D(:,:,:)
 r_mpitype_nod3D(1:com_nod2D%rPEnum, lb:ub, 1:3) => partit%r_mpitype_nod3D(:,:,:)
+
+s_mpitype_edge2D(1:com_edge2D%sPEnum) => partit%s_mpitype_edge2D(:)
+r_mpitype_edge2D(1:com_edge2D%rPEnum) => partit%r_mpitype_edge2D(:)
