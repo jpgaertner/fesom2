@@ -19,7 +19,7 @@ integer,       dimension(:)  , pointer :: nod_in_elem2D_num
 real(kind=WP), dimension(:)  , pointer :: depth               
 real(kind=WP), dimension(:,:), pointer :: gradient_vec 
 real(kind=WP), dimension(:,:), pointer :: gradient_sca 
-integer,       dimension(:)  , pointer :: bc_index_nod2D
+integer,       dimension(:)  , pointer :: bc_index_2D
 real(kind=WP), dimension(:)  , pointer :: zbar, Z, elem_depth
 integer,       dimension(:)  , pointer :: nlevels, nlevels_nod2D
 real(kind=WP), dimension(:,:), pointer :: area, area_inv
@@ -54,7 +54,7 @@ nod_in_elem2D_num  => mesh%nod_in_elem2D_num
 depth              => mesh%depth              
 gradient_vec       => mesh%gradient_vec       
 gradient_sca       => mesh%gradient_sca       
-bc_index_nod2D     => mesh%bc_index_nod2D     
+bc_index_2D        => mesh%bc_index_2D     
 zbar               => mesh%zbar               
 Z                  => mesh%Z
 elem_depth         => mesh%elem_depth      
