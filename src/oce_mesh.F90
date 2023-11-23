@@ -842,7 +842,36 @@ end if
  n=com_elem2D_full%sptr(com_elem2D_full%sPEnum+1)-1
  ALLOCATE(com_elem2D_full%slist(n))
  read(fileID,*) com_elem2D_full%slist
+
+!  read(fileID,*) com_edge2D%rPEnum
+!  if (com_edge2D%rPEnum > MAX_NEIGHBOR_PARTITIONS) then
+!     print *,'Increase MAX_NEIGHBOR_PARTITIONS in gen_modules_partitioning.F90 and recompile'
+!     stop
+!  endif
+! !!$ ALLOCATE(com_edge2D%rPE(com_edge2D%rPEnum))
+!  read(fileID,*) com_edge2D%rPE(1:com_edge2D%rPEnum)
+! !!$  ALLOCATE(com_edge2D%rptr(com_edge2D%rPEnum+1))
+!  read(fileID,*) com_edge2D%rptr(1:com_edge2D%rPEnum+1)
+!  ALLOCATE(partit%com_edge2D%rlist(eDim_edge2D))
+
+!  read(fileID,*) com_edge2D%rlist
+	 
+!  read(fileID,*) com_edge2D%sPEnum
+!  if (com_edge2D%sPEnum > MAX_NEIGHBOR_PARTITIONS) then
+!     print *,'Increase MAX_NEIGHBOR_PARTITIONS in gen_modules_partitioning.F90 and recompile'
+!     stop
+!  endif
+! !!$  ALLOCATE(com_edge2D%sPE(com_edge2D%sPEnum))
+!  read(fileID,*) com_edge2D%sPE(1:com_edge2D%sPEnum)
+! !!$  ALLOCATE(com_edge2D%sptr(com_edge2D%sPEnum+1))
+!  read(fileID,*) com_edge2D%sptr(1:com_edge2D%sPEnum+1)
+!  n=com_edge2D%sptr(com_edge2D%sPEnum+1)-1
+!  ALLOCATE(com_edge2D%slist(n))
+!  read(fileID,*) com_edge2D%slist
+! ! !# ??? why do some of these have to be allocated and some others not
+
  close(fileID)
+
 
  if (mype==0) write(*,*) 'communication arrays are read'
  deallocate(rbuff, ibuff)
