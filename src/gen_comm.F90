@@ -30,6 +30,10 @@ subroutine communication_nodn(partit, mesh)
 ! write(*,*) partit%mype
   allocate(recv_from_pe(nod2d), send_to_pes(MAX_LAENDERECK,nd_count), &
            partit%myList_nod2D(nd_count), STAT=IERR)
+           !# ??? what is ierr? it is not assigned to something in the
+           ! associate files 
+           !# ??? myList_nod2D does not contain halo nodes?
+           ! how can it be used like myList_nod2D(1:myDim_nod2D+eDim_nod2D)?
   if (IERR /= 0) then
      write (*,*) 'Could not allocate arrays in communication_nodn'
      stop
@@ -58,8 +62,11 @@ subroutine communication_nodn(partit, mesh)
   do l=1,nd_count
      n = myList_nod2D(l)
      do i = 1, nod_in_elem2D_num(n)
+      !# ??? nod_in_elem2D_num(n) is the number of elements that contain the node n
         ! Over all elements el that the node n is part of
         el = nod_in_elem2D(i,n)
+        !# ??? nod_in_elem2D(:,n) is the elements that the node n is part of
+        ! el is now the i-th element that uses node n
 
         ! Checks, if elements are quads or triangles
         q = 4    ! quads as default
@@ -83,6 +90,7 @@ subroutine communication_nodn(partit, mesh)
               ! Checks, if all possible connected partition
               ! And we have to send n to part(nod). Do we know this already?
               do k=1,MAX_LAENDERECK    !???
+               !# ???
                  if (send_to_pes(k,l) == part(nod)) then
                     exit  ! already collected
                  elseif (send_to_pes(k,l) == -1) then
@@ -270,6 +278,7 @@ subroutine communication_elemn(partit, mesh)
   myDim_elem2D=el_count
 
   allocate(partit%myList_elem2D(el_count), send_to_pes(MAX_LAENDERECK,el_count), STAT=IERR)
+  !# ??? this way myList_elem2D does not contain halo elements
   if (IERR /= 0) then
      write (*,*) 'Could not allocate arrays in communication_elemn'
      stop
@@ -526,6 +535,181 @@ subroutine communication_elemn(partit, mesh)
   deallocate(recv_from_pe, send_to_pes)
 end subroutine communication_elemn
 !==========================================================================
+subroutine communication_edgen(partit, mesh)
+   use MOD_MESH
+   use MOD_PARTIT
+   use MOD_PARSUP
+   implicit none
+   type(t_mesh), intent(in), target        :: mesh
+   type(t_partit), intent(inout), target   :: partit
+   integer                 :: num_send(0:partit%npes-1), num_recv(0:partit%npes-1)
+   integer, allocatable    :: recv_from_pe(:), send_to_pes(:,:)
+   integer                 :: elem, k, np, l, n
+   integer                 :: elnodes(3), eledges(3)
+   integer                 :: r_count, s_count, ed_count, prank
+   logical                 :: max_laendereck_too_small=.false.
+   ! ==========
+   integer, pointer        :: rPEnum, sPEnum, rPE(:), sPE(:), rptr(:), sptr(:), rlist(:), slist(:)
+#include "associate_part_def.h"
+#include "associate_mesh_ini.h"
+#include "associate_part_ass.h"
+   ! initialize a pointer com_edge2D of type com_struct in associate_part_ass
+   ! and assign it to partit%com_edge2D in associate_part_def
+   ! com_edge2D of type com_struct is added to the type t_partit in mod_partit
+
+   rPEnum  => com_edge2D%rPEnum
+   sPEnum  => com_edge2D%sPEnum
+   rPE     => com_edge2D%rPE
+   sPE     => com_edge2D%sPE
+   rptr    => com_edge2D%rptr
+   sptr    => com_edge2D%sptr
+   rlist   => com_edge2D%rlist
+   slist   => com_edge2D%slist
+
+   ! ==========
+   ! the lists recv_from_pe/ send_to_pes contain the PEs an edge is received from/ send to
+   ! ==========
+   allocate(recv_from_pe(edge2D), send_to_pes(MAX_LAENDERECK,edge2D))
+   num_recv(0:npes-1) = 0
+   num_send(0:npes-1) = 0
+   recv_from_pe(1:edge2D) = -1
+   send_to_pes(1:MAX_LAENDERECK,1:edge2D) = -1
+
+   do elem = 1, elem2D
+       elnodes = elem2D_nodes(:,elem)
+       eledges = elem_edges(:,elem)
+
+       ! receive 
+       do k = 1, 3
+           ! check if node is in mype
+           if (part(elnodes(k)) == mype) then
+               ! only receive opposite edge if none of its nodes is in mype
+               if (part(edges(1,eledges(k))) /= mype .and. part(edges(2,eledges(k))) /= mype) then
+                   ! check if the edge is still not collected
+                   if (recv_from_pe(eledges(k)) == -1) then
+                       np = part(edges(1,eledges(k)))  ! PE of the first node of the edge
+                       num_recv(np) = num_recv(np) + 1 ! number of received edges from PE np
+                       recv_from_pe(eledges(k)) = np   ! PE from which the edge is received
+                   end if
+               end if
+           end if
+       end do
+
+       ! send
+       do k = 1, 3
+           np = part(elnodes(k))
+
+           ! check if node is outside of mype
+           if (np /= mype) then
+               ! only send edge opposite of the node if it is not already in np
+               if (part(edges(1,eledges(k))) == np .or. part(edges(2,eledges(k))) == np) cycle
+               ! check if the edge is in mype
+               ! only check for edges(1,..) so that the edge is not send from two PEs
+               if (part(edges(1,eledges(k))) == mype) then
+                   do l = 1, MAX_LAENDERECK
+                       ! check if the edge is already collected
+                       if (send_to_pes(l,eledges(k)) == np) then
+                           exit
+                       ! only add edge to send if it is not already collected
+                       else if (send_to_pes(l,eledges(k)) == -1) then
+                           send_to_pes(l,eledges(k)) = np  ! PE the edge is send to
+                           num_send(np) = num_send(np) + 1 ! number of edges send to PE np
+                           exit
+                       else if (l == MAX_LAENDERECK) then
+                           max_laendereck_too_small = .true.
+                           ! if the loop is not exited before this, the number of neighbouring
+                           ! PEs is too large
+                       end if
+                   end do
+               end if
+           end if
+       end do
+
+   end do
+
+   if (max_laendereck_too_small) then
+       print *,'Increase MAX_LAENDERECK in gen_modules_partitioning.F90 and recompile'
+       stop
+   endif
+
+   ! ==========
+   ! the number of PEs information is received from/ send to
+   ! ==========
+   rPEnum = count(num_recv(0:npes-1) > 0)
+   sPEnum = count(num_send(0:npes-1) > 0)
+
+   ! ==========
+   ! the lists rPE/ sPE contain the PEs (numbered 0 to npes-1) information is received from/ send to
+   ! ==========
+   allocate(rPE(rPEnum))
+   allocate(sPE(sPEnum))
+   r_count = 0
+   s_count = 0
+
+   do np = 0, npes-1
+       if(num_recv(np) /= 0) then  ! if something is received from the PE...
+          r_count = r_count + 1
+          rPE(r_count) = np        ! ... add it to the list rPE at the next index
+       end if
+       if(num_send(np) /= 0) then  ! if something is send to the PE...
+          s_count = s_count + 1
+          sPE(s_count) = np        ! ... add it to the list sPE at the next index
+       end if
+    enddo
+
+    ! ==========
+    ! the lists rptr/ sptr are used as pointers
+    ! ==========
+    allocate(rptr(rPEnum+1)) 
+    allocate(sptr(sPEnum+1))
+    r_count = 0
+    s_count = 0
+
+   rptr(1) = 1
+   sptr(1) = 1
+
+   do r_count = 1, rPEnum
+       np = rPE(r_count)
+       rptr(r_count+1) =  rptr(r_count) + num_recv(np)
+   enddo
+   do s_count = 1, sPEnum
+       np = sPE(s_count)
+       sptr(s_count+1) =  sptr(s_count) + num_send(np)
+   enddo
+
+   ! ==========
+   ! the lists rlist/ slist contain the edges that are received/ send
+   ! ==========
+   allocate(rlist(rptr(rPEnum+1)-1)) 
+   allocate(slist(sptr(sPEnum+1)-1)) 
+   r_count = 0
+   s_count = 0
+
+   do np = 1,rPEnum
+      prank = rPE(np)
+
+      do n = 1, edge2D
+         if (recv_from_pe(n) == prank) then
+            r_count = r_count + 1
+            rlist(r_count) = n
+         end if
+      end do
+   end do
+
+   do np = 1,sPEnum
+      prank = sPE(np)
+      do n = 1, edge2D
+         if(any(send_to_pes(:,n) == prank)) then 
+            s_count = s_count + 1
+            slist(s_count) = n
+         end if
+      end do
+   end do
+
+   deallocate(send_to_pes, recv_from_pe)
+
+end subroutine communication_edgen
+!==========================================================================
 subroutine mymesh(partit, mesh)
   use MOD_MESH
   USE MOD_PARTIT
@@ -558,9 +742,9 @@ subroutine mymesh(partit, mesh)
 !!$  myList_nod2D(myDim_nod2D+1:myDim_nod2D+eDim_nod2D)=&
 !!$       com_nod2D%rlist(1:eDim_nod2D)
   ! Summary:  	     
-  ! myList_nod2D(myDim_nod2D+1:myDim_nod2D+eDim_nod2D)
-  ! contains external nodes which mype needs;    
   ! myList_nod2D(1:myDim_nod2D) contains owned nodes
+  ! myList_nod2D(myDim_nod2D+1:myDim_nod2D+eDim_nod2D)
+  ! contains external nodes which mype needs
 
   !======= ELEMENTS
   ! 2D elements 
@@ -630,6 +814,10 @@ subroutine mymesh(partit, mesh)
   do n=1, edge2D
      do q=1,2 
         if (part(edges(q,n))==mype) then
+         !# ??? this way an edge is added two times to the list if both if its
+         ! nodes are in mype. -> no, bc of the exit statement
+         ! still: why not use if (any(edges(:,n) == mype)) without
+         ! a loop over the two nodes of edge n?
            counter=counter+1
            myList_edge2D(counter)=n
            exit
@@ -641,7 +829,10 @@ subroutine mymesh(partit, mesh)
      elem=myList_elem2D(n)
      eledges=elem_edges(:,elem)
      q2 = merge(3,4,eledges(1) == eledges(4))
+     ! loop over all edges of an element
      DO q=1,q2
+      ! check if both nodes of the edge are not in mype and if the edge is not
+      ! already collected. then add it to the local list of edges myList_edge2D
         if((part(edges(1,eledges(q))).ne.mype).and.(part(edges(2,eledges(q))).ne.mype) &
              .and. all(myList_edge2D(myDim_edge2D:counter) /= eledges(q))) then
            counter=counter+1 
@@ -651,9 +842,9 @@ subroutine mymesh(partit, mesh)
   END DO
   eDim_edge2D=counter-myDim_edge2D
   ! Summary:  	     
-  ! myList_edge2D(myDim_edge2D+1:myDim_edge2D+eDim_edge2D)
-  ! contains external edges which mype needs;    
   ! myList_edge2D(1:myDim_edge2D) contains owned edges +
   ! shared edges which mype updates
+  ! myList_edge2D(myDim_edge2D+1:myDim_edge2D+eDim_edge2D)
+  ! contains external edges which mype needs;    
 end subroutine mymesh
 !=================================================================
