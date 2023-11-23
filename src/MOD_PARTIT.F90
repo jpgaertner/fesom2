@@ -35,6 +35,7 @@ end type com_struct
 TYPE T_PARTIT
 
   type(com_struct) :: com_nod2D
+  type(com_struct) :: com_edge2D
   type(com_struct) :: com_elem2D
   type(com_struct) :: com_elem2D_full
 
@@ -74,11 +75,15 @@ TYPE T_PARTIT
   integer, allocatable       :: s_mpitype_nod2D_i(:),   r_mpitype_nod2D_i(:)
   integer, allocatable       :: s_mpitype_nod3D(:,:,:), r_mpitype_nod3D(:,:,:)
 
+  ! edge fields
+  integer, allocatable  :: s_mpitype_edge2D(:), r_mpitype_edge2D(:)
+
   integer            :: MPIERR
   
   !!! remPtr_* are constructed during the runtime and shall not be dumped!!!
   integer, allocatable ::  remPtr_nod2D(:),  remList_nod2D(:)
   integer, allocatable ::  remPtr_elem2D(:), remList_elem2D(:)
+  integer, allocatable ::  remPtr_edge2D(:), remList_edge2D(:)
 
   logical :: elem_full_flag
 #if defined(_OPENMP)
