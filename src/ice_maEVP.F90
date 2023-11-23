@@ -615,6 +615,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             bb=g*val3*vol
             aa=bb*sum(dx(:,el)*(elevation(elnodes)+p_ice))
             bb=bb*sum(dy(:,el)*(elevation(elnodes)+p_ice))
+            !# ??? why is it not elevation - p_ice? as in ssh_term - m g nabla (H - h)
             rhs_a(placement(:,el))=rhs_a(placement(:,el))-aa
             rhs_m(placement(:,el))=rhs_m(placement(:,el))-bb
         end do
@@ -876,15 +877,22 @@ subroutine EVPdynamics_m(ice, partit, mesh)
         end do ! --> do ed=1,myDim_edge2D
 
         !_______________________________________________________________________
-        call exchange_nod_begin(u_ice_aux, v_ice_aux, partit)
-        !# ??? write an exchange_edges routine?
+
+        if (discretization=='c') then
+            call exchange_nod_begin(u_ice_aux, v_ice_aux, partit)
+            !# ??? write an exchange_edges routine?
+            call exchange_nod_end(partit)
+            !# ??? why not just use call exchange_nod? (this includes exchange_nod_begin and exchange_nod_end)
+        else if (discretization=='nc') then
+            call exchange_edge2D(u_ice_aux, partit)
+            call exchange_edge2D(v_ice_aux, partit)
+        end if
 
         do row=1, dim
             u_rhs_ice(row)=0.0_WP
             v_rhs_ice(row)=0.0_WP
         end do
 
-        call exchange_nod_end(partit)
 
     end do ! --> do shortstep=1, steps
     u_ice=u_ice_aux
