@@ -487,7 +487,7 @@ subroutine init_gatherLists(partit)
   USE MOD_PARSUP
   implicit none
   type(t_partit), intent(inout), target :: partit    
-  integer                               :: n2D, e2D, sum_loc_elem2D
+  integer                               :: n2D, e2D, ed2D, sum_loc_elem2D
   integer                               :: n, estart, nstart
 #include "associate_part_def.h"
 #include "associate_part_ass.h"
@@ -497,23 +497,29 @@ subroutine init_gatherLists(partit)
 
         allocate(partit%remPtr_nod2D(npes))
         allocate(partit%remPtr_elem2D(npes))
+        allocate(partit%remPtr_edge2D(npes))
 !reassociate the pointers to the just allocated arrays
 #include "associate_part_ass.h"
         remPtr_nod2D(1) = 1
         remPtr_elem2D(1) = 1
+        remPtr_edge2D(1) = 1
         
         do n=1, npes-1
            call MPI_RECV(n2D, 1, MPI_INTEGER, n, 0, MPI_COMM_FESOM, MPI_STATUS_IGNORE, MPIerr )
            call MPI_RECV(e2D, 1, MPI_INTEGER, n, 1, MPI_COMM_FESOM, MPI_STATUS_IGNORE, MPIerr )
+           call MPI_RECV(ed2D, 1, MPI_INTEGER, n, 1111, MPI_COMM_FESOM, MPI_STATUS_IGNORE, MPIerr )
+           !# ??? is the fifth argument the order of operations of the MPI_RECV statements?
 
            remPtr_nod2D(n+1)  = remPtr_nod2D(n)  + n2D
            remPtr_elem2D(n+1) = remPtr_elem2D(n) + e2D 
+           remPtr_edge2D(n+1) = remPtr_edge2D(n) + ed2D
         enddo
 
         allocate(partit%remList_nod2D(remPtr_nod2D(npes)))   ! this should be nod2D - myDim_nod2D
         allocate(partit%remList_elem2D(remPtr_elem2D(npes))) ! this is > elem2D, because the elements overlap.
                                                       ! Consider optimization: avoid multiple communication
                                                       ! of the same elem from different PEs.
+        allocate(partit%remList_edge2D(remPtr_edge2D(npes)))
 !reassociate the pointers to the just allocated arrays
 #include "associate_part_ass.h"
 
@@ -526,6 +532,10 @@ subroutine init_gatherLists(partit)
            e2D    = remPtr_elem2D(n+1) - remPtr_elem2D(n)
            call MPI_RECV(remList_elem2D(estart),e2D, MPI_INTEGER, n, 3, MPI_COMM_FESOM, &
                                                            MPI_STATUS_IGNORE, MPIerr ) 
+           estart = remPtr_edge2D(n)
+           e2D    = remPtr_edge2D(n+1) - remPtr_edge2D(n)
+           call MPI_RECV(remList_edge2D(estart),ed2D, MPI_INTEGER, n, 1111, MPI_COMM_FESOM, &
+                                                           MPI_STATUS_IGNORE, MPIerr ) 
 
         enddo
      end if
@@ -533,8 +543,10 @@ subroutine init_gatherLists(partit)
 
      call MPI_SEND(myDim_nod2D,   1,            MPI_INTEGER, 0, 0, MPI_COMM_FESOM, MPIerr )
      call MPI_SEND(myDim_elem2D,  1,            MPI_INTEGER, 0, 1, MPI_COMM_FESOM, MPIerr )
+     call MPI_SEND(myDim_edge2D,  1,            MPI_INTEGER, 0, 1111, MPI_COMM_FESOM, MPIerr )
      call MPI_SEND(myList_nod2D,  myDim_nod2D,  MPI_INTEGER, 0, 2, MPI_COMM_FESOM, MPIerr )
      call MPI_SEND(myList_elem2D, myDim_elem2D, MPI_INTEGER, 0, 3, MPI_COMM_FESOM, MPIerr )
+     call MPI_SEND(myList_edge2D, myDim_edge2D, MPI_INTEGER, 0, 1111, MPI_COMM_FESOM, MPIerr )
 
   endif
 !$OMP MASTER
