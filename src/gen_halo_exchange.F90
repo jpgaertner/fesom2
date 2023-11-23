@@ -1057,6 +1057,63 @@ integer                             :: n, sn, rn
 end if
 
 END SUBROUTINE exchange_elem2D_i_begin
+
+!=======================================
+! edge routines
+!=======================================
+!# test init 1 for myDim 0 for eDim
+subroutine exchange_edge2D(edge_array2D, partit, luse_g2g)
+   use mod_mesh
+   use mod_partit
+   use mod_parsup
+   implicit none
+   type(t_partit), intent(inout), target :: partit
+   real(real64),   intent(inout)         :: edge_array2D(:)
+   integer                               :: n, sn, rn
+   logical,        intent(in), optional  :: luse_g2g
+   logical                               :: lg2g
+#include "associate_part_def.h"
+#include "associate_part_ass.h"
+
+   if(present(luse_g2g)) then
+      lg2g = luse_g2g
+   else
+      lg2g = .false.
+   end if
+   
+   if (npes > 1) then
+      sn = com_edge2D%sPEnum
+      rn = com_edge2D%rPEnum
+
+      ! Check MPI point-to-point communication for consistency
+#ifdef DEBUG
+      call check_mpi_comm(rn, sn, r_mpitype_edge2D, s_mpitype_edge2D, &
+         com_edge2D%rPE, com_edge2D%sPE)
+#endif
+
+      !$ACC HOST_DATA USE_DEVICE(edge1_array2D, edge2_array2D) IF(lg2g)
+
+      DO n=1,rn
+         call MPI_IRECV(edge_array2D, 1, r_mpitype_edge2D(n), com_edge2D%rPE(n), &
+                  com_edge2D%rPE(n),      MPI_COMM_FESOM, com_edge2D%req(n), MPIerr)
+      END DO
+      DO n=1, sn
+         call MPI_ISEND(edge_array2D, 1, s_mpitype_edge2D(n), com_edge2D%sPE(n), &
+                        mype,      MPI_COMM_FESOM, com_edge2D%req(rn+n), MPIerr)
+      END DO
+
+      !$ACC END HOST_DATA
+
+      com_edge2D%nreq = 2*(rn+sn)
+
+   end if
+
+   if (partit%npes > 1) &
+      call MPI_WAITALL(partit%com_edge2D%nreq, partit%com_edge2D%req, MPI_STATUSES_IGNORE, partit%MPIerr)
+
+
+end subroutine exchange_edge2D
+
 ! ========================================================================
 ! Broadcast routines
 ! Many because of different sizes.
@@ -2519,5 +2576,5 @@ end interface gather_edge
 private  ! hides items not listed on public statement
 public :: exchange_nod,exchange_elem,broadcast_nod,broadcast_elem, &
           gather_nod, gather_elem, exchange_nod_begin, exchange_nod_end, exchange_elem_begin, &
-          exchange_elem_end, gather_edge
+          exchange_elem_end, gather_edge, exchange_edge2D
 end module g_comm_auto
