@@ -27,7 +27,7 @@ INTEGER, ALLOCATABLE, DIMENSION(:) :: temp
 #include "associate_mesh_ini.h"
 #include "associate_part_ass.h"
 
-allocate(temp(max(nod2D, elem2D))) 
+allocate(temp(max(nod2D, elem2D,edge2D))) 
 ! =========
 ! nodes
 ! =========
@@ -56,22 +56,22 @@ allocate(temp(max(nod2D, elem2D)))
 ! =========
 ! edges
 ! =========
-!!$  ! Replace global numbering with a local one
-!!$  temp(1:edge2D)=0
-!!$  DO n=1, myDim_edge2D+eDim_edge2D
-!!$  temp(myList_edge2D(n))=n
-!!$  END DO
-!!$  DO n=1, com_edge2D%sptr(com_edge2D%sPEnum+1)-1
-!!$         m=com_edge2D%slist(n)
-!!$	 com_edge2D%slist(n)=temp(m)
-!!$  END DO
-!!$
-!!$  DO n=1, com_edge2D%rptr(com_edge2D%rPEnum+1)-1
-!!$         m=com_edge2D%rlist(n)
-!!$	 com_edge2D%rlist(n)=temp(m)
-!!$  END DO
-!!$	 ! com_edge2%rlist should be 
-!!$	 ! myDim_edge2D+1:myDim_edge2D+eDim_edge2D
+!   Replace global numbering with a local one
+  temp(1:edge2D)=0
+  DO n=1, myDim_edge2D+eDim_edge2D
+   temp(myList_edge2D(n))=n
+  END DO
+  DO n=1, com_edge2D%sptr(com_edge2D%sPEnum+1)-1
+         m=com_edge2D%slist(n)
+	 com_edge2D%slist(n)=temp(m)
+  END DO
+  DO n=1, com_edge2D%rptr(com_edge2D%rPEnum+1)-1
+         m=com_edge2D%rlist(n)
+	 com_edge2D%rlist(n)=temp(m)
+  END DO
+	 ! com_edge2%rlist should be 
+	 ! myDim_edge2D+1:myDim_edge2D+eDim_edge2D
+
 ! =========
 ! elements
 ! =========
@@ -230,7 +230,7 @@ SUBROUTINE save_dist_mesh(partit, mesh)
   write(fileID,*) myDim_edge2D
   write(fileID,*) eDim_edge2D 	 
   write(fileID,*) myList_edge2D(1:myDim_edge2D +eDim_edge2D)
-  deallocate(partit%myList_edge2D)
+  !deallocate(partit%myList_edge2D) #??? with this, it doesnt work
   close(fileID)       
 
 
@@ -288,6 +288,23 @@ SUBROUTINE save_dist_mesh(partit, mesh)
 !!$  deallocate(com_elem2D_full%sPE)
 !!$  deallocate(com_elem2D_full%sptr)
   deallocate(partit%com_elem2D_full%slist)
+  !# ??? why are only some of these deallocated?
+
+  write(fileID,*) com_edge2D%rPEnum
+  write(fileID,*) com_edge2D%rPE(1:com_edge2D%rPEnum)
+  write(fileID,*) com_edge2D%rptr(1:com_edge2D%rPEnum+1)
+  write(fileID,*) com_edge2D%rlist
+  write(fileID,*) com_edge2D%sPEnum
+  write(fileID,*) com_edge2D%sPE(1:com_edge2D%sPEnum)
+  write(fileID,*) com_edge2D%sptr(1:com_edge2D%sPEnum+1)
+  write(fileID,*) com_edge2D%slist
+!   deallocate(partit%myList_edge2D)
+
+!   deallocate(partit%com_edge2D%rlist)
+!   deallocate(partit%com_edge2D%slist)
+  !# ??? deallocating these does not work: 'attempt to deallocate unallocated 'partit''
+  ! why are they 'unallocated'? they are in gen_comm (and never explicitly unallocated)
+
   close(fileID)
   ! ================================
   ! mapping ( PE contiguous 2D numbering) 	 
