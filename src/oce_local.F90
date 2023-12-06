@@ -230,7 +230,7 @@ SUBROUTINE save_dist_mesh(partit, mesh)
   write(fileID,*) myDim_edge2D
   write(fileID,*) eDim_edge2D 	 
   write(fileID,*) myList_edge2D(1:myDim_edge2D +eDim_edge2D)
-  !deallocate(partit%myList_edge2D) #??? with this, it doesnt work
+  !deallocate(partit%myList_edge2D) !#??? with this, it doesnt work
   close(fileID)       
 
 
@@ -293,12 +293,12 @@ SUBROUTINE save_dist_mesh(partit, mesh)
   write(fileID,*) com_edge2D%rPEnum
   write(fileID,*) com_edge2D%rPE(1:com_edge2D%rPEnum)
   write(fileID,*) com_edge2D%rptr(1:com_edge2D%rPEnum+1)
-  write(fileID,*) com_edge2D%rlist
+  write(fileID,*) com_edge2D%rlist(1:com_edge2D%rptr(com_edge2D%rPEnum+1)-1)
   write(fileID,*) com_edge2D%sPEnum
   write(fileID,*) com_edge2D%sPE(1:com_edge2D%sPEnum)
   write(fileID,*) com_edge2D%sptr(1:com_edge2D%sPEnum+1)
-  write(fileID,*) com_edge2D%slist
-!   deallocate(partit%myList_edge2D)
+  write(fileID,*) com_edge2D%slist(1:com_edge2D%sptr(com_edge2D%sPEnum+1)-1)
+  deallocate(partit%myList_edge2D)
 
 !   deallocate(partit%com_edge2D%rlist)
 !   deallocate(partit%com_edge2D%slist)
