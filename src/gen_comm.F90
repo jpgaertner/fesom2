@@ -678,8 +678,8 @@ subroutine communication_edgen(partit, mesh)
    ! ==========
    ! the lists rlist/ slist contain the edges that are received/ send
    ! ==========
-   allocate(com_edge2D%rlist(rptr(rPEnum+1)-1)) 
-   allocate(com_edge2D%slist(sptr(sPEnum+1)-1))
+   allocate(rlist(rptr(rPEnum+1)-1)) 
+   allocate(slist(sptr(sPEnum+1)-1))
    r_count = 0
    s_count = 0
 
@@ -689,7 +689,7 @@ subroutine communication_edgen(partit, mesh)
       do n = 1, edge2D
          if (recv_from_pe(n) == prank) then
             r_count = r_count + 1
-            com_edge2D%rlist(r_count) = n
+            rlist(r_count) = n
          end if
       end do
    end do
@@ -699,10 +699,13 @@ subroutine communication_edgen(partit, mesh)
       do n = 1, edge2D
          if(any(send_to_pes(:,n) == prank)) then 
             s_count = s_count + 1
-            com_edge2D%slist(s_count) = n
+            slist(s_count) = n
          end if
       end do
    end do
+
+   com_edge2D%rlist = rlist
+   com_edge2D%slist = slist
 
    deallocate(send_to_pes, recv_from_pe)
 
