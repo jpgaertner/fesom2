@@ -544,7 +544,7 @@ subroutine communication_edgen(partit, mesh)
    type(t_partit), intent(inout), target   :: partit
    integer                 :: num_send(0:partit%npes-1), num_recv(0:partit%npes-1)
    integer, allocatable    :: recv_from_pe(:), send_to_pes(:,:)
-   integer                 :: elem, k, np, l, n
+   integer                 :: elem, k, k_ed, np, l, n
    integer                 :: elnodes(3), eledges(3)
    integer                 :: r_count, s_count, ed_count, prank
    logical                 :: max_laendereck_too_small=.false.
@@ -584,12 +584,13 @@ subroutine communication_edgen(partit, mesh)
            ! check if node is in mype
            if (part(elnodes(k)) == mype) then
                ! only receive opposite edge if none of its nodes is in mype
-               if (part(edges(1,eledges(k))) /= mype .and. part(edges(2,eledges(k))) /= mype) then
+               k_ed = modulo(k,3) + 1 ! this is the index of the edge opposite to the node k
+               if (part(edges(1,eledges(k_ed))) /= mype .and. part(edges(2,eledges(k_ed))) /= mype) then
                    ! check if the edge is still not collected
-                   if (recv_from_pe(eledges(k)) == -1) then
-                       np = part(edges(1,eledges(k)))  ! PE of the first node of the edge
+                   if (recv_from_pe(eledges(k_ed)) == -1) then
+                       np = part(edges(1,eledges(k_ed)))  ! PE of the first node of the edge
                        num_recv(np) = num_recv(np) + 1 ! number of received edges from PE np
-                       recv_from_pe(eledges(k)) = np   ! PE from which the edge is received
+                       recv_from_pe(eledges(k_ed)) = np   ! PE from which the edge is received
                    end if
                end if
            end if
@@ -602,17 +603,18 @@ subroutine communication_edgen(partit, mesh)
            ! check if node is outside of mype
            if (np /= mype) then
                ! only send edge opposite of the node if it is not already in np
-               if (part(edges(1,eledges(k))) == np .or. part(edges(2,eledges(k))) == np) cycle
+               k_ed = modulo(k,3) + 1 ! this is the index of the edge opposite to the node k
+               if (part(edges(1,eledges(k_ed))) == np .or. part(edges(2,eledges(k_ed))) == np) cycle
                ! check if the edge is in mype
                ! only check for edges(1,..) so that the edge is not send from two PEs
-               if (part(edges(1,eledges(k))) == mype) then
+               if (part(edges(1,eledges(k_ed))) == mype) then
                    do l = 1, MAX_LAENDERECK
                        ! check if the edge is already collected
-                       if (send_to_pes(l,eledges(k)) == np) then
+                       if (send_to_pes(l,eledges(k_ed)) == np) then
                            exit
                        ! only add edge to send if it is not already collected
-                       else if (send_to_pes(l,eledges(k)) == -1) then
-                           send_to_pes(l,eledges(k)) = np  ! PE the edge is send to
+                       else if (send_to_pes(l,eledges(k_ed)) == -1) then
+                           send_to_pes(l,eledges(k_ed)) = np  ! PE the edge is send to
                            num_send(np) = num_send(np) + 1 ! number of edges send to PE np
                            exit
                        else if (l == MAX_LAENDERECK) then
@@ -641,8 +643,6 @@ subroutine communication_edgen(partit, mesh)
    ! ==========
    ! the lists rPE/ sPE contain the PEs (numbered 0 to npes-1) information is received from/ send to
    ! ==========
-   allocate(rPE(rPEnum))
-   allocate(sPE(sPEnum))
    r_count = 0
    s_count = 0
 
@@ -660,8 +660,6 @@ subroutine communication_edgen(partit, mesh)
     ! ==========
     ! the lists rptr/ sptr are used as pointers
     ! ==========
-    allocate(rptr(rPEnum+1)) 
-    allocate(sptr(sPEnum+1))
     r_count = 0
     s_count = 0
 
@@ -680,8 +678,8 @@ subroutine communication_edgen(partit, mesh)
    ! ==========
    ! the lists rlist/ slist contain the edges that are received/ send
    ! ==========
-   allocate(rlist(rptr(rPEnum+1)-1)) 
-   allocate(slist(sptr(sPEnum+1)-1)) 
+   allocate(com_edge2D%rlist(rptr(rPEnum+1)-1)) 
+   allocate(com_edge2D%slist(sptr(sPEnum+1)-1))
    r_count = 0
    s_count = 0
 
@@ -691,7 +689,7 @@ subroutine communication_edgen(partit, mesh)
       do n = 1, edge2D
          if (recv_from_pe(n) == prank) then
             r_count = r_count + 1
-            rlist(r_count) = n
+            com_edge2D%rlist(r_count) = n
          end if
       end do
    end do
@@ -701,7 +699,7 @@ subroutine communication_edgen(partit, mesh)
       do n = 1, edge2D
          if(any(send_to_pes(:,n) == prank)) then 
             s_count = s_count + 1
-            slist(s_count) = n
+            com_edge2D%slist(s_count) = n
          end if
       end do
    end do
