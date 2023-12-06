@@ -1061,57 +1061,68 @@ END SUBROUTINE exchange_elem2D_i_begin
 !=======================================
 ! edge routines
 !=======================================
-!# test init 1 for myDim 0 for eDim
-subroutine exchange_edge2D(edge_array2D, partit, luse_g2g)
+
+subroutine exchange_edge2D(edge_array2D, partit)
    use mod_mesh
    use mod_partit
    use mod_parsup
    implicit none
+
+   type :: buff
+      real(real64), allocatable :: array(:)
+   end type
+
    type(t_partit), intent(inout), target :: partit
    real(real64),   intent(inout)         :: edge_array2D(:)
    integer                               :: n, sn, rn
-   logical,        intent(in), optional  :: luse_g2g
-   logical                               :: lg2g
+   integer        :: nini, nend, offset, sreq(partit%com_edge2D%sPEnum), rreq(partit%com_edge2D%rPEnum)
+   real(real64), allocatable   :: s_buff(:)
+   type(buff) :: r_buff(partit%com_edge2D%rPEnum)
+
 #include "associate_part_def.h"
 #include "associate_part_ass.h"
 
-   if(present(luse_g2g)) then
-      lg2g = luse_g2g
-   else
-      lg2g = .false.
-   end if
-   
    if (npes > 1) then
       sn = com_edge2D%sPEnum
       rn = com_edge2D%rPEnum
 
-      ! Check MPI point-to-point communication for consistency
-#ifdef DEBUG
-      call check_mpi_comm(rn, sn, r_mpitype_edge2D, s_mpitype_edge2D, &
-         com_edge2D%rPE, com_edge2D%sPE)
-#endif
+      do n=1, sn
+         nini = com_edge2D%sptr(n)
+         nend = com_edge2D%sptr(n+1) - 1
+         offset=com_edge2D%sptr(n+1) - nini
 
-      !$ACC HOST_DATA USE_DEVICE(edge1_array2D, edge2_array2D) IF(lg2g)
+         allocate(s_buff(size(edge_array2D(com_edge2D%slist(nini:nend)))))
+         s_buff = edge_array2D(com_edge2D%slist(nini:nend))
 
-      DO n=1,rn
-         call MPI_IRECV(edge_array2D, 1, r_mpitype_edge2D(n), com_edge2D%rPE(n), &
-                  com_edge2D%rPE(n),      MPI_COMM_FESOM, com_edge2D%req(n), MPIerr)
-      END DO
-      DO n=1, sn
-         call MPI_ISEND(edge_array2D, 1, s_mpitype_edge2D(n), com_edge2D%sPE(n), &
-                        mype,      MPI_COMM_FESOM, com_edge2D%req(rn+n), MPIerr)
-      END DO
+         call MPI_ISEND(s_buff, offset, MPI_DOUBLE_PRECISION, com_edge2D%sPE(n), &
+                        mype,      MPI_COMM_FESOM, sreq(n), MPIerr)
 
-      !$ACC END HOST_DATA
+         deallocate(s_buff)
+      end do
 
-      com_edge2D%nreq = 2*(rn+sn)
+      do n=1,rn
+         nini=com_edge2D%rptr(n)
+         nend=com_edge2D%rptr(n+1) - 1
+         offset=com_edge2D%rptr(n+1) - nini
+
+         allocate(r_buff(n)%array(size(edge_array2D(com_edge2D%rlist(nini:nend)))))
+
+         call MPI_IRECV(r_buff(n)%array, offset, MPI_DOUBLE_PRECISION, com_edge2D%rPE(n), &
+                  com_edge2D%rPE(n),      MPI_COMM_FESOM, rreq(n), MPIerr)
+      end do
+
+      call MPI_WAITALL(sn,sreq,MPI_STATUSES_IGNORE,MPIerr)
+      call MPI_WAITALL(rn,rreq,MPI_STATUSES_IGNORE,MPIerr)
+
+      do n=1, rn
+         nini=com_edge2D%rptr(n)
+         nend=com_edge2D%rptr(n+1) - 1
+         edge_array2D(com_edge2D%rlist(nini:nend))=r_buff(n)%array
+
+         deallocate(r_buff(n)%array)
+      end do
 
    end if
-
-   if (partit%npes > 1) &
-      call MPI_WAITALL(partit%com_edge2D%nreq, partit%com_edge2D%req, MPI_STATUSES_IGNORE, partit%MPIerr)
-
-
 end subroutine exchange_edge2D
 
 ! ========================================================================
