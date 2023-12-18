@@ -176,7 +176,7 @@ subroutine init_mpi_types(partit, mesh)
       if (.not. allocated(com_nod2D%req))        allocate(com_nod2D%req(            3*com_nod2D%rPEnum  + 3*com_nod2D%sPEnum))
       if (.not. allocated(com_elem2D%req))       allocate(com_elem2D%req(           3*com_elem2D%rPEnum + 3*com_elem2D%sPEnum))
       if (.not. allocated(com_elem2D_full%req))  allocate(com_elem2D_full%req(3*com_elem2D_full%rPEnum  + 3*com_elem2D_full%sPEnum))
-!================================================
+      !================================================
 ! MPI DATATYPES
 !================================================
       ! Build MPI Data types for halo exchange: Elements
@@ -479,7 +479,80 @@ subroutine init_mpi_types(partit, mesh)
 
       deallocate(blocklen,     displace)
       deallocate(blocklen_tmp, displace_tmp)
+
+      ! build mpi data types for halo exchange: edges
+
+      allocate(partit%r_mpitype_edge2D(com_edge2D%rPEnum))
+      allocate(partit%s_mpitype_edge2D(com_edge2D%sPEnum))
+
+      ! reassociate the pointers after allocating their targets
+#include "associate_part_ass.h"
+
+      ! Upper limit for the length of the local interface between the neighbor PEs 
+      max_nb = max(maxval(com_edge2D%rptr(2:com_edge2D%rPEnum+1) - com_edge2D%rptr(1:com_edge2D%rPEnum)), &
+                   maxval(com_edge2D%sptr(2:com_edge2D%sPEnum+1) - com_edge2D%sptr(1:com_edge2D%sPEnum)))
+
+      allocate(displace(max_nb),     blocklen(max_nb))
+
+      ! print *, 'none', com_nod2D%sptr
+      ! print *, 'ntwo', com_nod2D%rptr
+      ! print *, 'nthree', com_nod2D%slist
+      ! print *, 'nfour', com_nod2D%rlist
+
+      ! print *, 'eone', com_edge2D%sptr
+      ! print *, 'etwo', com_edge2D%rptr
+      ! print *, 'ethree', com_edge2D%slist
+      ! print *, 'efour', com_edge2D%rlist
+
+
+      do n=1,com_edge2D%rPEnum
+         nb = 1
+         nini = com_edge2D%rptr(n)
+         nend = com_edge2D%rptr(n+1) - 1
+         displace(:) = 0
+         displace(1) = com_edge2D%rlist(nini) -1  ! C counting, start at 0
+         blocklen(:) = 1
+
+         do i=nini+1, nend
+            if (com_edge2D%rlist(i) /= com_edge2D%rlist(i-1) + 1) then  
+               ! New block
+               nb = nb+1
+               displace(nb) = com_edge2D%rlist(i) -1
+            else
+               blocklen(nb) = blocklen(nb)+1
+            endif
+         enddo
+      call MPI_TYPE_INDEXED(nb, blocklen,      displace,      MPI_DOUBLE_PRECISION, & 
+         r_mpitype_edge2D(n),     MPIerr)
+      call MPI_TYPE_COMMIT(r_mpitype_nod2D(n),     MPIerr)
+   enddo
+
+   do n=1,com_edge2D%sPEnum
+      nb = 1
+      nini = com_edge2D%sptr(n)
+      nend = com_edge2D%sptr(n+1) - 1
+      displace(:) = 0
+      displace(1) = com_edge2D%slist(nini) -1  ! C counting, start at 0
+      blocklen(:) = 1
+
+      do i=nini+1, nend
+         if (com_edge2D%slist(i) /= com_edge2D%slist(i-1) + 1) then  
+            ! New block
+            nb = nb+1
+            displace(nb) = com_edge2D%slist(i) -1
+         else
+            blocklen(nb) = blocklen(nb)+1
+         endif
+      enddo
+      call MPI_TYPE_INDEXED(nb, blocklen,      displace,      MPI_DOUBLE_PRECISION, & 
+           s_mpitype_edge2D(n),     MPIerr)
+      call MPI_TYPE_COMMIT(s_mpitype_edge2D(n),     MPIerr)      
+   enddo
+
+   deallocate(blocklen,     displace)
+
    endif
+   
 end subroutine init_mpi_types
 !===================================================================
 subroutine init_gatherLists(partit)
@@ -503,7 +576,7 @@ subroutine init_gatherLists(partit)
         remPtr_nod2D(1) = 1
         remPtr_elem2D(1) = 1
         remPtr_edge2D(1) = 1
-        
+
         do n=1, npes-1
            call MPI_RECV(n2D, 1, MPI_INTEGER, n, 0, MPI_COMM_FESOM, MPI_STATUS_IGNORE, MPIerr )
            call MPI_RECV(e2D, 1, MPI_INTEGER, n, 1, MPI_COMM_FESOM, MPI_STATUS_IGNORE, MPIerr )
