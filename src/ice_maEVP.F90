@@ -880,9 +880,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
 
         if (discretization=='c') then
             call exchange_nod_begin(u_ice_aux, v_ice_aux, partit)
-            !# ??? write an exchange_edges routine?
             call exchange_nod_end(partit)
-            !# ??? why not just use call exchange_nod? (this includes exchange_nod_begin and exchange_nod_end)
         else if (discretization=='nc') then
             call exchange_edge2D(u_ice_aux, partit)
             call exchange_edge2D(v_ice_aux, partit)
