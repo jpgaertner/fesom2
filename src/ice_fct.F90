@@ -104,7 +104,7 @@ subroutine ice_TG_rhs(ice, partit, mesh)
     integer         :: n, q, row, elem, elnodes(3)
     !___________________________________________________________________________
     ! pointer on necessary derived types
-    real(kind=WP), dimension(:), pointer  :: u_ice, v_ice
+    real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, u_ice_nod, v_ice_nod
     real(kind=WP), dimension(:), pointer  :: a_ice, m_ice, m_snow
     real(kind=WP), dimension(:), pointer  :: rhs_a, rhs_m, rhs_ms
     !___________________________________________________________________________
@@ -120,6 +120,8 @@ subroutine ice_TG_rhs(ice, partit, mesh)
 #include "associate_mesh_ass.h"
     u_ice    => ice%uice(:)
     v_ice    => ice%vice(:)
+    u_ice_nod=> ice%uice_nod(:)
+    v_ice_nod=> ice%vice_nod(:)
     a_ice    => ice%data(1)%values(:)
     m_ice    => ice%data(2)%values(:)
     m_snow   => ice%data(3)%values(:)
@@ -131,6 +133,27 @@ subroutine ice_TG_rhs(ice, partit, mesh)
     rhs_temp => ice%data(4)%values_rhs(:)
 #endif
     discretization => ice%discretization
+
+    !___________________________________________________________________________
+    ! interpolate velocities from edges to nodes if necessary
+    if (discretization == 'c') then
+        u_ice_nod = u_ice
+        v_ice_nod = v_ice
+    else if (discretization == 'nc') then
+        u_ice_nod = 0
+        v_ice_nod = 0
+        do n = 1, myDim_edge2D+eDim_edge2D
+            u_ice_nod(edges(:,n)) = u_ice_nod(edges(:,n)) + u_ice(n)
+            v_ice_nod(edges(:,n)) = v_ice_nod(edges(:,n)) + v_ice(n)
+        end do
+        do n = 1, myDim_nod2D+eDim_nod2D
+            u_ice_nod(n) = u_ice_nod(n) / mesh%nn_num(n)
+            v_ice_nod(n) = v_ice_nod(n) / mesh%nn_num(n)
+        end do
+        !# TODO check if nn_num is calculated on all nodes, not just myDim_nod2D
+        !# if yes, change the pointer association
+    end if
+
     !___________________________________________________________________________
     ! Taylor-Galerkin (Lax-Wendroff) rhs
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(n, q, row, elem, elnodes, diff, entries,  um, vm, vol, dx, dy)
