@@ -170,7 +170,9 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
             stress_node_surf(1,n) = stress_node_surf(1,n)/mesh%nn_num(n)
             stress_node_surf(2,n) = stress_node_surf(2,n)/mesh%nn_num(n)
             !# TODO check if stress_node_surf is used on eDim_nod2D. if yes,
-            ! an exchange routine needs to be called
+            ! an exchange routine needs to be called because mesh
+            !# the pointer association of nn_num is only of dimension myDim_nod2D
+            !# but in fvom_init, it is calculated on all nodes, right?
         end do
 !$OMP END DO
     end if
