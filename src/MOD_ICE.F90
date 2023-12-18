@@ -111,8 +111,8 @@ TYPE T_ICE
 
     !___________________________________________________________________________
     ! zonal & merdional ice velocity
-    real(kind=WP), allocatable, dimension(:)    :: uice, uice_rhs, uice_old, uice_aux
-    real(kind=WP), allocatable, dimension(:)    :: vice, vice_rhs, vice_old, vice_aux
+    real(kind=WP), allocatable, dimension(:)    :: uice, uice_rhs, uice_old, uice_aux, uice_nod
+    real(kind=WP), allocatable, dimension(:)    :: vice, vice_rhs, vice_old, vice_aux, vice_nod
 
     ! surface stess atm<-->ice, oce<-->ice
     real(kind=WP), allocatable, dimension(:)    :: stress_atmice_x, stress_iceoce_x
