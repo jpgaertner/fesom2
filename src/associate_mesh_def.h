@@ -21,7 +21,7 @@ integer,       dimension(:)  , pointer :: nod_in_elem2D_num
 real(kind=WP), dimension(:)  , pointer :: depth
 real(kind=WP), dimension(:,:), pointer :: gradient_vec
 real(kind=WP), dimension(:,:), pointer :: gradient_sca
-integer,       dimension(:)  , pointer :: bc_index_nod2D
+!integer,       dimension(:)  , pointer :: bc_index_nod2D
 real(kind=WP), dimension(:)  , pointer :: zbar, Z, elem_depth
 integer,       dimension(:)  , pointer :: nlevels, nlevels_nod2D, nlevels_nod2D_min
 real(kind=WP), dimension(:,:), pointer :: area, area_inv, areasvol, areasvol_inv
