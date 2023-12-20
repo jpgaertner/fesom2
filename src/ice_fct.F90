@@ -1122,15 +1122,19 @@ subroutine ice_TG_rhs_div(ice, partit, mesh)
     type(t_partit), intent(inout), target :: partit
     type(t_mesh)  , intent(in)   , target :: mesh
     !___________________________________________________________________________
-    real(kind=WP)            :: diff, entries(3),  um, vm, vol, dx(3), dy(3), tmp_sum
+    real(kind=WP)            :: diff, entries(3),  um, vm, vol, tmp_sum
     integer                  :: n, q, row, elem, elnodes(3)
     real(kind=WP)            :: c1, c2, c3, c4, cx1, cx2, cx3, cx4, entries2(3)
     !___________________________________________________________________________
     ! pointer on necessary derived types
-    real(kind=WP), dimension(:), pointer  :: u_ice, v_ice
+    real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, u_ice_nod, v_ice_nod
     real(kind=WP), dimension(:), pointer  :: a_ice, m_ice, m_snow
     real(kind=WP), dimension(:), pointer  :: rhs_a, rhs_m, rhs_ms
     real(kind=WP), dimension(:), pointer  :: rhs_adiv, rhs_mdiv, rhs_msdiv
+    !___________________________________________________________________________
+    character, pointer                              :: discretization
+    real(kind=WP), dimension(3,partit%myDim_elem2D) :: dx, dy
+    integer, dimension(3,partit%myDim_elem2D)       :: placement
 #if defined (__oifs) || defined (__ifsinterface)
     real(kind=WP), dimension(:), pointer  :: ice_temp, rhs_temp, rhs_tempdiv
 #endif
@@ -1140,6 +1144,8 @@ subroutine ice_TG_rhs_div(ice, partit, mesh)
 #include "associate_mesh_ass.h"
     u_ice       => ice%uice(:)
     v_ice       => ice%vice(:)
+    u_ice_nod   => ice%uice_nod(:)
+    v_ice_nod   => ice%vice_nod(:)
     a_ice       => ice%data(1)%values(:)
     m_ice       => ice%data(2)%values(:)
     m_snow      => ice%data(3)%values(:)
@@ -1154,6 +1160,28 @@ subroutine ice_TG_rhs_div(ice, partit, mesh)
     rhs_temp    => ice%data(4)%values_rhs(:)
     rhs_tempdiv => ice%data(4)%values_div_rhs(:)
 #endif
+    discretization => ice%discretization
+
+    !___________________________________________________________________________
+    ! interpolate velocities from edges to nodes if necessary
+    if (discretization == 'c') then
+        u_ice_nod = u_ice
+        v_ice_nod = v_ice
+    else if (discretization == 'nc') then
+        u_ice_nod = 0
+        v_ice_nod = 0
+        do n = 1, myDim_edge2D+eDim_edge2D
+            u_ice_nod(edges(:,n)) = u_ice_nod(edges(:,n)) + u_ice(n)
+            v_ice_nod(edges(:,n)) = v_ice_nod(edges(:,n)) + v_ice(n)
+        end do
+        do n = 1, myDim_nod2D+eDim_nod2D
+            u_ice_nod(n) = u_ice_nod(n) / mesh%nn_num(n)
+            v_ice_nod(n) = v_ice_nod(n) / mesh%nn_num(n)
+        end do
+        !# TODO check if nn_num is calculated on all nodes, not just myDim_nod2D
+        !# if yes, change the pointer association
+    end if
+
     !___________________________________________________________________________
     ! Computes the rhs in a Taylor-Galerkin way (with upwind type of
     ! correction for the advection operator)
@@ -1177,6 +1205,20 @@ subroutine ice_TG_rhs_div(ice, partit, mesh)
     end do
     !$ACC END PARALLEL LOOP
 
+    if (discretization == 'c') then
+        do elem=1,myDim_elem2D
+            dx(:,elem) = gradient_sca(1:3,elem)
+            dy(:,elem) = gradient_sca(4:6,elem)
+            placement(:,elem) = elem2D_nodes(:,elem)
+        end do
+    else if (discretization == 'nc') then
+        do elem=1,myDim_elem2D
+            dx(:,elem) = -2.0_WP * gradient_sca(1:3,elem)
+            dy(:,elem) = -2.0_WP * gradient_sca(4:6,elem)
+            placement(:,elem) = elem_edges(:,elem)
+        end do
+    end if
+
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(diff, entries, um, vm, vol, dx, dy, n, q, row, elem, elnodes, c1, c2, c3, c4, cx1, cx2, cx3, cx4, entries2)
 !$OMP DO
 #if !defined(DISABLE_OPENACC_ATOMICS)
@@ -1191,28 +1233,26 @@ subroutine ice_TG_rhs_div(ice, partit, mesh)
         if (ulevels(elem)>1) cycle
 
         !derivatives
-        dx=gradient_sca(1:3,elem)
-        dy=gradient_sca(4:6,elem)
         vol=elem_area(elem)
-        um=sum(u_ice(elnodes))
-        vm=sum(v_ice(elnodes))
+        um=sum(u_ice(placement(:,elem)))
+        vm=sum(v_ice(placement(:,elem)))
         ! this is exact computation (no assumption of u=const on elements used
         ! in the standard version)
-        c1=(um*um+sum(u_ice(elnodes)*u_ice(elnodes)))/12.0_WP
-        c2=(vm*vm+sum(v_ice(elnodes)*v_ice(elnodes)))/12.0_WP
-        c3=(um*vm+sum(v_ice(elnodes)*u_ice(elnodes)))/12.0_WP
-        c4=sum(dx*u_ice(elnodes)+dy*v_ice(elnodes))
+        c1=(um*um+sum(u_ice(placement(:,elem))*u_ice(placement(:,elem))))/12.0_WP
+        c2=(vm*vm+sum(v_ice(placement(:,elem))*v_ice(placement(:,elem))))/12.0_WP
+        c3=(um*vm+sum(v_ice(placement(:,elem))*u_ice(placement(:,elem))))/12.0_WP
+        c4=sum(dx(:,elem)*u_ice(placement(:,elem))+dy(:,elem)*v_ice(placement(:,elem)))
         do n=1,3
             row=elnodes(n)
                 !!PS         if(ulevels_nod2D(row)>1) cycle !LK89140
             do q = 1,3
-                entries(q)= vol*ice%ice_dt*((1.0_WP-0.5_WP*ice%ice_dt*c4)*(dx(n)*(um+u_ice(elnodes(q)))+ &
-                            dy(n)*(vm+v_ice(elnodes(q))))/12.0_WP - &
-                            0.5_WP*ice%ice_dt*(c1*dx(n)*dx(q)+c2*dy(n)*dy(q)+c3*(dx(n)*dy(q)+dx(q)*dy(n))))
+                entries(q)= vol*ice%ice_dt*((1.0_WP-0.5_WP*ice%ice_dt*c4)*(dx(n,elem)*(um+u_ice(placement(q,elem)))+ &
+                            dy(n,elem)*(vm+v_ice(placement(q,elem))))/12.0_WP - &
+                            0.5_WP*ice%ice_dt*(c1*dx(n,elem)*dx(q,elem)+c2*dy(n,elem)*dy(q,elem)+c3*(dx(n,elem)*dy(q,elem)+dx(q,elem)*dy(n,elem))))
                         !um*dx(n)+vm*dy(n))*(um*dx(q)+vm*dy(q))/9.0)
-                entries2(q)=0.5_WP*ice%ice_dt*(dx(n)*(um+u_ice(elnodes(q)))+ &
-                            dy(n)*(vm+v_ice(elnodes(q)))-dx(q)*(um+u_ice(row))- &
-                            dy(q)*(vm+v_ice(row)))
+                entries2(q)=0.5_WP*ice%ice_dt*(dx(n,elem)*(um+u_ice(placement(q,elem)))+ &
+                            dy(n,elem)*(vm+v_ice(placement(q,elem)))-dx(q,elem)*(um+u_ice(row))- &
+                            dy(q,elem)*(vm+v_ice(row)))
             end do
 
             !___________________________________________________________________
