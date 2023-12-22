@@ -108,7 +108,7 @@ subroutine ice_TG_rhs(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: a_ice, m_ice, m_snow
     real(kind=WP), dimension(:), pointer  :: rhs_a, rhs_m, rhs_ms
     !___________________________________________________________________________
-    character, pointer                              :: discretization
+    integer, pointer                              :: ice_vplace
     real(kind=WP), dimension(3,partit%myDim_elem2D) :: dx, dy
     integer, dimension(3,partit%myDim_elem2D)       :: placement
 #if defined (__oifs) || defined (__ifsinterface)
@@ -132,14 +132,14 @@ subroutine ice_TG_rhs(ice, partit, mesh)
     ice_temp => ice%data(4)%values(:)
     rhs_temp => ice%data(4)%values_rhs(:)
 #endif
-    discretization => ice%discretization
+    ice_vplace => ice%ice_vplace
 
     !___________________________________________________________________________
     ! interpolate velocities from edges to nodes if necessary
-    if (discretization == 'c') then
+    if (ice_vplace == 0) then
         u_ice_nod = u_ice
         v_ice_nod = v_ice
-    else if (discretization == 'nc') then
+    else if (ice_vplace == 1) then
         u_ice_nod = 0
         v_ice_nod = 0
         do n = 1, myDim_edge2D+eDim_edge2D
@@ -168,13 +168,13 @@ subroutine ice_TG_rhs(ice, partit, mesh)
     END DO
 !$OMP END DO
 
-    if (discretization == 'c') then
+    if (ice_vplace == 0) then
         do elem=1,myDim_elem2D
             dx(:,elem) = gradient_sca(1:3,elem)
             dy(:,elem) = gradient_sca(4:6,elem)
             placement(:,elem) = elem2D_nodes(:,elem)
         end do
-    else if (discretization == 'nc') then
+    else if (ice_vplace == 1) then
         do elem=1,myDim_elem2D
             dx(:,elem) = -2.0_WP * gradient_sca(1:3,elem)
             dy(:,elem) = -2.0_WP * gradient_sca(4:6,elem)
@@ -1132,7 +1132,7 @@ subroutine ice_TG_rhs_div(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: rhs_a, rhs_m, rhs_ms
     real(kind=WP), dimension(:), pointer  :: rhs_adiv, rhs_mdiv, rhs_msdiv
     !___________________________________________________________________________
-    character, pointer                              :: discretization
+    integer, pointer                              :: ice_vplace
     real(kind=WP), dimension(3,partit%myDim_elem2D) :: dx, dy
     integer, dimension(3,partit%myDim_elem2D)       :: placement
 #if defined (__oifs) || defined (__ifsinterface)
@@ -1160,14 +1160,14 @@ subroutine ice_TG_rhs_div(ice, partit, mesh)
     rhs_temp    => ice%data(4)%values_rhs(:)
     rhs_tempdiv => ice%data(4)%values_div_rhs(:)
 #endif
-    discretization => ice%discretization
+    ice_vplace  => ice%ice_vplace
 
     !___________________________________________________________________________
     ! interpolate velocities from edges to nodes if necessary
-    if (discretization == 'c') then
+    if (ice_vplace == 0) then
         u_ice_nod = u_ice
         v_ice_nod = v_ice
-    else if (discretization == 'nc') then
+    else if (ice_vplace == 1) then
         u_ice_nod = 0
         v_ice_nod = 0
         do n = 1, myDim_edge2D+eDim_edge2D
@@ -1205,13 +1205,13 @@ subroutine ice_TG_rhs_div(ice, partit, mesh)
     end do
     !$ACC END PARALLEL LOOP
 
-    if (discretization == 'c') then
+    if (ice_vplace == 0) then
         do elem=1,myDim_elem2D
             dx(:,elem) = gradient_sca(1:3,elem)
             dy(:,elem) = gradient_sca(4:6,elem)
             placement(:,elem) = elem2D_nodes(:,elem)
         end do
-    else if (discretization == 'nc') then
+    else if (ice_vplace == 1) then
         do elem=1,myDim_elem2D
             dx(:,elem) = -2.0_WP * gradient_sca(1:3,elem)
             dy(:,elem) = -2.0_WP * gradient_sca(4:6,elem)

@@ -77,7 +77,7 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, a_ice, u_w, v_w
     real(kind=WP), dimension(:), pointer  :: stress_iceoce_x, stress_iceoce_y  
     !___________________________________________________________________________
-    character, pointer  :: discretization
+    integer, pointer    :: ice_vplace     
     real(kind=WP)       :: a_ice_ed, uw, vw
     real(kind=WP), dimension(partit%myDim_edge2D+partit%eDim_edge2D) :: stress_edge_surf_x, stress_edge_surf_y
     integer             :: eledges(3)
@@ -92,7 +92,7 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
     v_w             => ice%srfoce_v(:)
     stress_iceoce_x => ice%stress_iceoce_x(:)
     stress_iceoce_y => ice%stress_iceoce_y(:)
-    discretization  => ice%discretization
+    ice_vplace      => ice%ice_vplace
   
     ! ==================
     ! momentum flux:
@@ -107,7 +107,7 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
     ! compute total surface stress (iceoce+atmoce) on nodes 
 
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(n, elem, elnodes, n1, aux)
-    if (discretization == 'c') then
+    if (ice_vplace == 0) then
 !$OMP DO
         do n=1,myDim_nod2D+eDim_nod2D   
             !_______________________________________________________________________
@@ -128,7 +128,7 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
             stress_node_surf(2,n) = stress_iceoce_y(n)*a_ice(n) + stress_atmoce_y(n)*(1.0_WP-a_ice(n))
         end do
 !$OMP END DO
-    else if (discretization == 'nc') then
+    else if (ice_vplace == 1) then
 !$OMP DO
         do n=1,myDim_edge2D+eDim_edge2D
             !_______________________________________________________________________
@@ -180,7 +180,7 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
     !___________________________________________________________________________
     ! compute total surface stress (iceoce+atmoce) on elements
 !$OMP DO
-    if (discretization == 'c') then
+    if (ice_vplace == 0) then
         DO elem=1,myDim_elem2D
             !_______________________________________________________________________
             ! if cavity element skip it 
@@ -193,7 +193,7 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
             stress_surf(2,elem)=sum(stress_iceoce_y(elnodes)*a_ice(elnodes) + &
                                     stress_atmoce_y(elnodes)*(1.0_WP-a_ice(elnodes)))/3.0_WP
         END DO
-    else if (discretization == 'nc') then
+    else if (ice_vplace == 1) then
         DO elem=1,myDim_elem2D
             !_______________________________________________________________________
             ! if cavity element skip it 

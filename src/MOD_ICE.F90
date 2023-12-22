@@ -181,10 +181,11 @@ TYPE T_ICE
     integer                   :: ice_steps_since_upd=0
     logical                   :: ice_update = .true.
 
-    character                 :: discretization = 'c'      ! c: use conforming p1 functions, placement of
-                                                           !    velocities on vertices
-                                                           ! nc: use non-conforming p1 functions, placement
-                                                           !    of velocities on edges    !___________________________________________________________________________
+    integer                   :: ice_vplace = 0      ! 0: use conforming p1 functions, placement of
+                                                     !    velocities on vertices
+                                                     ! 1: use non-conforming p1 functions, placement
+                                                     !    of velocities on edges
+    !___________________________________________________________________________
     contains
 #if defined(__PGI)
         procedure, private WRITE_T_ICE
@@ -536,12 +537,12 @@ subroutine ice_init(ice, partit, mesh)
     integer        :: iost
     !___________________________________________________________________________
     ! define ice namelist parameter
-    integer        :: whichEVP, evp_rheol_steps, ice_ave_steps
+    integer        :: whichEVP, evp_rheol_steps, ice_ave_steps, ice_vplace
     real(kind=WP)  :: Pstar, ellipse, c_pressure, delta_min, ice_gamma_fct, &
                       ice_diff, theta_io, alpha_evp, beta_evp, c_aevp, Cd_oce_ice
     namelist /ice_dyn/ whichEVP, Pstar, ellipse, c_pressure, delta_min, evp_rheol_steps, &
                        Cd_oce_ice, ice_gamma_fct, ice_diff, theta_io, ice_ave_steps, &
-                       alpha_evp, beta_evp, c_aevp
+                       alpha_evp, beta_evp, c_aevp, ice_vplace
 
     real(kind=WP)  :: Sice, h0, emiss_ice, emiss_wat, albsn, albsnm, albi, &
                       albim, albw, con, consn
@@ -584,6 +585,7 @@ subroutine ice_init(ice, partit, mesh)
     ice%alpha_evp       = alpha_evp
     ice%beta_evp        = beta_evp
     ice%c_aevp          = c_aevp
+    ice%ice_vplace      = ice_vplace
 
     ! set parameters in ice derived type from namelist.ice --> namelist /ice_therm/
     ice%thermo%con      = con
@@ -610,7 +612,7 @@ subroutine ice_init(ice, partit, mesh)
     !___________________________________________________________________________
     ! allocate/initialise arrays in ice derived type
     ! initialise velocity and stress related arrays in ice derived type
-    if (ice%discretization == 'c') then
+    if (ice%ice_vplace == 0) then
         allocate(ice%uice(           node_size))
         allocate(ice%uice_rhs(       node_size))
         allocate(ice%uice_old(       node_size))
@@ -619,7 +621,7 @@ subroutine ice_init(ice, partit, mesh)
         allocate(ice%vice_old(       node_size))
         allocate(ice%stress_iceoce_x(node_size))
         allocate(ice%stress_atmice_y(node_size))
-    else if (ice%discretization == 'nc') then
+    else if (ice%ice_vplace == 1) then
         allocate(ice%uice(           edge_size))
         allocate(ice%uice_rhs(       edge_size))
         allocate(ice%uice_old(       edge_size))
@@ -629,6 +631,7 @@ subroutine ice_init(ice, partit, mesh)
         allocate(ice%stress_iceoce_x(edge_size))
         allocate(ice%stress_atmice_y(edge_size))
     end if
+
     allocate(ice%stress_atmice_x(node_size))
     allocate(ice%stress_iceoce_y(node_size))
     allocate(ice%uice_nod(       node_size))
@@ -643,23 +646,23 @@ subroutine ice_init(ice, partit, mesh)
     ice%vice_old        = 0.0_WP
     ice%stress_atmice_y = 0.0_WP
     ice%stress_iceoce_y = 0.0_WP
-    if ((ice%whichEVP /= 0) .and. (ice%discretization == 'c')) then
+    if ((ice%whichEVP /= 0) .and. (ice%ice_vplace == 0)) then
         allocate(ice%uice_aux(         node_size))
         allocate(ice%vice_aux(         node_size))
         ice%uice_aux    = 0.0_WP
         ice%vice_aux    = 0.0_WP
-    else if ((ice%whichEVP /= 0) .and. (ice%discretization == 'nc')) then
+    else if ((ice%whichEVP /= 0) .and. (ice%ice_vplace == 1)) then
         allocate(ice%uice_aux(         edge_size))
         allocate(ice%vice_aux(         edge_size))
         ice%uice_aux    = 0.0_WP
         ice%vice_aux    = 0.0_WP
     end if
-    if ((ice%whichEVP == 2) .and. (ice%discretization == 'c')) then
+    if ((ice%whichEVP == 2) .and. (ice%ice_vplace == 0)) then
         allocate(ice%alpha_evp_array(  node_size))
         allocate(ice%beta_evp_array(   node_size))
         ice%alpha_evp_array = ice%alpha_evp
         ice%beta_evp_array  = ice%alpha_evp
-    else if ((ice%whichEVP == 2) .and. (ice%discretization == 'nc')) then
+    else if ((ice%whichEVP == 2) .and. (ice%ice_vplace == 1)) then
         allocate(ice%alpha_evp_array(  edge_size))
         allocate(ice%beta_evp_array(   edge_size))
         ice%alpha_evp_array = ice%alpha_evp
@@ -736,10 +739,10 @@ subroutine ice_init(ice, partit, mesh)
     ice%work%eps22       = 0.0_WP
 
     allocate(ice%work%ice_strength(elem_size))
-    if (ice%discretization == 'c') then
+    if (ice%ice_vplace == 0) then
         allocate(ice%work%inv_areamass(    node_size))
         allocate(ice%work%inv_mass(        node_size))
-    else if (ice%discretization == 'nc') then
+    else if (ice%ice_vplace == 1) then
         allocate(ice%work%inv_areamass(    edge_size))
         allocate(ice%work%inv_mass(        edge_size))
     end if
@@ -784,7 +787,7 @@ subroutine ice_init(ice, partit, mesh)
     ! to here since namelist.ice is now read in ice_init where whichEVP is not available
     ! when  mesh_auxiliary_arrays is called
     !array of 2D boundary conditions is used in ice_maEVP
-    if ((ice%whichEVP > 0) .and. (ice%discretization == 'c')) then
+    if ((ice%whichEVP > 0) .and. (ice%ice_vplace == 0)) then
         allocate(mesh%bc_index_2D(myDim_nod2D+eDim_nod2D))
         mesh%bc_index_2D=1._WP
         do n=1, myDim_edge2D
@@ -792,7 +795,7 @@ subroutine ice_init(ice, partit, mesh)
             if (myList_edge2D(n) <= mesh%edge2D_in) cycle
             mesh%bc_index_2D(ed)=0._WP
         end do
-    else if ((ice%whichEVP > 0) .and. (ice%discretization == 'nc')) then
+    else if ((ice%whichEVP > 0) .and. (ice%ice_vplace == 1)) then
         allocate(mesh%bc_index_2D(myDim_edge2D+eDim_edge2D))
         mesh%bc_index_2D=1._WP
         do n=1, myDim_edge2D
@@ -830,17 +833,17 @@ subroutine ice_init_toyocean_dummy(ice, partit, mesh)
 #include "associate_mesh_ass.h"
 
     !___________________________________________________________________________
-    ! define local vertice & elem array size
+    ! define local node & edge array size
     node_size=myDim_nod2D+eDim_nod2D
     edge_size=myDim_edge2D+eDim_edge2D
 
     !___________________________________________________________________________
     ! allocate/initialise arrays in ice derived type
     ! initialise velocity and stress related arrays in ice derived type
-    if (ice%discretization == 'c') then
+    if (ice%ice_vplace == 0) then
         allocate(ice%uice(node_size))
         allocate(ice%vice(node_size))
-    else if (ice%discretization == 'nc') then
+    else if (ice%ice_vplace == 1) then
         allocate(ice%uice(edge_size))
         allocate(ice%vice(edge_size))
     end if
