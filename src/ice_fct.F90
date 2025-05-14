@@ -110,10 +110,14 @@ subroutine ice_TG_rhs(ice, partit, mesh)
 #if defined (__oifs) || defined (__ifsinterface)
     real(kind=WP), dimension(:), pointer  :: ice_temp, rhs_temp
 #endif
+    !___________________________________________________________________________
+    integer, pointer                                :: ice_vplace
+    integer                                         :: eledges(3)
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
+    ice_vplace => ice%ice_vplace
     u_ice    => ice%uice(:)
     v_ice    => ice%vice(:)
     a_ice    => ice%data(1)%values(:)
@@ -156,46 +160,90 @@ subroutine ice_TG_rhs(ice, partit, mesh)
 #else
     !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) private(n, q, row, elem, elnodes, diff, entries,  um, vm, vol, dx, dy)
 #endif
-    do elem=1,myDim_elem2D          !assembling rhs over elements
-        elnodes=elem2D_nodes(:,elem)
-        !_______________________________________________________________________
-        ! if cavity element skip it
-        if (ulevels(elem)>1) cycle
 
-        !derivatives
-        dx=gradient_sca(1:3,elem)
-        dy=gradient_sca(4:6,elem)
-        vol=elem_area(elem)
-        !um=sum(U_ice(elnodes))/3.0_WP
-        !vm=sum(V_ice(elnodes))/3.0_WP
-        um=sum(U_ice(elnodes))
-        vm=sum(V_ice(elnodes))
+    if (ice_vplace == 0) then
+        do elem=1,myDim_elem2D          !assembling rhs over elements
+            elnodes=elem2D_nodes(:,elem)
+            !_______________________________________________________________________
+            ! if cavity element skip it
+            if (ulevels(elem)>1) cycle
 
-        !diffusivity
-        diff=ice%ice_diff*sqrt(elem_area(elem)/scale_area)
-        !$ACC LOOP SEQ
-        DO n=1,3
-            row=elnodes(n)
-	    !$ACC LOOP SEQ
-            DO q = 1,3
-                !entries(q)= vol*dt*((dx(n)*um+dy(n)*vm)/3.0_WP - &
-                !            diff*(dx(n)*dx(q)+ dy(n)*dy(q))- &
-                !	       0.5*dt*(um*dx(n)+vm*dy(n))*(um*dx(q)+vm*dy(q)))
-                entries(q)= vol*ice%ice_dt*((dx(n)*(um+u_ice(elnodes(q)))+ &
-                            dy(n)*(vm+v_ice(elnodes(q))))/12.0_WP - &
-                            diff*(dx(n)*dx(q)+ dy(n)*dy(q))- &
-                            0.5_WP*ice%ice_dt*(um*dx(n)+vm*dy(n))*(um*dx(q)+vm*dy(q))/9.0_WP)
-            END DO
-	    !$ACC END LOOP
-            rhs_m(row)=rhs_m(row)+sum(entries*m_ice(elnodes))
-            rhs_a(row)=rhs_a(row)+sum(entries*a_ice(elnodes))
-            rhs_ms(row)=rhs_ms(row)+sum(entries*m_snow(elnodes))
+            !derivatives
+            dx=gradient_sca(1:3,elem)
+            dy=gradient_sca(4:6,elem)
+            vol=elem_area(elem)
+            !um=sum(U_ice(elnodes))/3.0_WP
+            !vm=sum(V_ice(elnodes))/3.0_WP
+            um=sum(U_ice(elnodes))
+            vm=sum(V_ice(elnodes))
+
+            !diffusivity
+            diff=ice%ice_diff*sqrt(elem_area(elem)/scale_area)
+            !$ACC LOOP SEQ
+            DO n=1,3
+                row=elnodes(n)
+    	        !$ACC LOOP SEQ
+                DO q = 1,3
+                    !entries(q)= vol*dt*((dx(n)*um+dy(n)*vm)/3.0_WP - &
+                    !            diff*(dx(n)*dx(q)+ dy(n)*dy(q))- &
+                    !	       0.5*dt*(um*dx(n)+vm*dy(n))*(um*dx(q)+vm*dy(q)))
+                    entries(q)= vol*ice%ice_dt*((dx(n)*(um+u_ice(elnodes(q)))+ &
+                                dy(n)*(vm+v_ice(elnodes(q))))/12.0_WP - &
+                                diff*(dx(n)*dx(q)+ dy(n)*dy(q))- &
+                                0.5_WP*ice%ice_dt*(um*dx(n)+vm*dy(n))*(um*dx(q)+vm*dy(q))/9.0_WP)
+                END DO
+    	        !$ACC END LOOP
+                rhs_m(row)=rhs_m(row)+sum(entries*m_ice(elnodes))
+                rhs_a(row)=rhs_a(row)+sum(entries*a_ice(elnodes))
+                rhs_ms(row)=rhs_ms(row)+sum(entries*m_snow(elnodes))
 #if defined (__oifs) || defined (__ifsinterface)
-            rhs_temp(row)=rhs_temp(row)+sum(entries*ice_temp(elnodes))
+                rhs_temp(row)=rhs_temp(row)+sum(entries*ice_temp(elnodes))
 #endif
-        END DO
-	!$ACC END LOOP
-    end do
+            END DO
+	        !$ACC END LOOP
+        end do
+    
+    else if (ice_vplace == 1) then
+        ! velocities are averaged from edges to the center of the elements
+        do elem=1,myDim_elem2D
+
+            ! if cavity element skip it
+            if (ulevels(elem)>1) cycle
+
+            elnodes = elem2D_nodes(:,elem)
+            eledges = elem_edges(:,elem)
+            
+            !derivatives
+            dx = gradient_sca(1:3,elem)
+            dy = gradient_sca(4:6,elem)
+            vol = elem_area(elem)
+
+            um = sum(u_ice(eledges))
+            vm = sum(v_ice(eledges))
+
+            !$ACC LOOP SEQ
+            do n = 1,3
+                row = elnodes(n)
+
+                !$ACC LOOP SEQ
+                do q = 1,3
+                    entries(q) = vol * ice%ice_dt * ( &
+                                (dx(n) * um + dy(n) * vm) / 9.0_WP &
+                                - 0.5_WP * ice%ice_dt * (dx(n) * um + dy(n) * vm) * (dx(q) * um + dy(q) * vm) / 9.0_WP &
+                                )
+                end do
+                !$ACC END LOOP
+
+                rhs_m(row) = rhs_m(row) + sum(entries * m_ice(elnodes))
+                rhs_a(row) = rhs_a(row) + sum(entries * a_ice(elnodes))
+                rhs_ms(row) = rhs_ms(row) + sum(entries * m_snow(elnodes))
+#if defined (__oifs) || defined (__ifsinterface)
+                rhs_temp(row) = rhs_temp(row) + sum(entries * ice_temp(elnodes))
+#endif
+            end do
+            !$ACC END LOOP
+        end do
+    end if
 
 #ifndef ENABLE_OPENACC
 !$OMP END DO

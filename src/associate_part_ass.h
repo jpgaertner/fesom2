@@ -3,6 +3,7 @@ MPI_COMM_FESOM_IB       => partit%MPI_COMM_FESOM_IB
 com_nod2D       => partit%com_nod2D
 com_elem2D      => partit%com_elem2D
 com_elem2D_full => partit%com_elem2D_full
+com_edge2D      => partit%com_edge2D
 myDim_nod2D     => partit%myDim_nod2D
 eDim_nod2D      => partit%eDim_nod2D
 myDim_elem2D    => partit%myDim_elem2D

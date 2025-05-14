@@ -3,6 +3,7 @@
   type(com_struct), pointer     :: com_nod2D
   type(com_struct), pointer     :: com_elem2D
   type(com_struct), pointer     :: com_elem2D_full
+  type(com_struct), pointer     :: com_edge2D
   integer                       :: ub, lb ! to work with r(s)_mpitype_elem3D(nod3D)
 
   integer, dimension(:),     pointer :: s_mpitype_edge2D, r_mpitype_edge2D

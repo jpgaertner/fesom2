@@ -43,6 +43,7 @@ TYPE T_PARTIT
   type(com_struct) :: com_nod2D
   type(com_struct) :: com_elem2D
   type(com_struct) :: com_elem2D_full
+  type(com_struct) :: com_edge2D
 
   !---------------------------------------------------
   !LA 2023-01-31 add asynchronous icebergs

@@ -124,8 +124,8 @@ TYPE T_ICE
 
     !___________________________________________________________________________
     ! zonal & merdional ice velocity
-    real(kind=WP), allocatable, dimension(:)    :: uice, uice_rhs, uice_old, uice_aux, uice_ib
-    real(kind=WP), allocatable, dimension(:)    :: vice, vice_rhs, vice_old, vice_aux, vice_ib
+    real(kind=WP), allocatable, dimension(:)    :: uice, uice_rhs, uice_old, uice_aux, uice_ib, uice_nod
+    real(kind=WP), allocatable, dimension(:)    :: vice, vice_rhs, vice_old, vice_aux, vice_ib, vice_nod
     
     ! surface stess atm<-->ice, oce<-->ice
     real(kind=WP), allocatable, dimension(:)    :: stress_atmice_x, stress_iceoce_x
@@ -143,6 +143,9 @@ TYPE T_ICE
     real(kind=WP), allocatable, dimension(:)    :: alpha_evp_array, beta_evp_array
     ! ice/snow thicknesses in the ice-covered area
     real(kind=WP), allocatable, dimension(:)    :: h_ice, h_snow    
+
+    ! for the nc stabilization routine
+    real(kind=WP), allocatable, dimension(:)    :: zeta_e
 
     !___________________________________________________________________________
     ! total number of ice tracers (default=3, 1=area, 2=mice, 3=msnow, (4=ice_temp)
@@ -196,7 +199,9 @@ TYPE T_ICE
     integer                   :: ice_ave_steps=1           !ice step=ice_ave_steps*oce_step
     real(kind=WP)             :: cd_oce_ice = 5.5e-3       ! drag coef. oce - ice
     logical                   :: ice_free_slip=.false.
-    integer                   :: whichEVP=0                ! 0=standart; 1=mEVP; 2=aEVP
+    integer                   :: whichEVP=0                ! 0=standart; 1=mEVP; 2=aEVP; 3=test_solver
+    integer                   :: ice_vplace = 0            ! 0 = node placement, 1 = edge placement
+    real(kind=WP)             :: nc_stab = 2.5_WP          ! stabilization parameter for edge placement of velocity
 
     real(kind=WP)             :: ice_dt                    ! ice step=ice_ave_steps*oce_step
     real(kind=WP)             :: Tevp_inv
@@ -550,17 +555,17 @@ subroutine ice_init(ice, partit, mesh)
     type(t_partit), intent(inout), target :: partit
     type(t_mesh)  , intent(inout), target :: mesh
     !___________________________________________________________________________
-    integer        :: elem_size, node_size, n, ed(2)
+    integer        :: elem_size, node_size, edge_size, n, ed(2), velocity_size
     integer, save  :: nm_unit  = 105       ! unit to open namelist file, skip 100-102 for cray
     integer        :: iost
     !___________________________________________________________________________
     ! define ice namelist parameter
-    integer        :: whichEVP, evp_rheol_steps, ice_ave_steps
+    integer        :: whichEVP, evp_rheol_steps, ice_ave_steps, ice_vplace
     real(kind=WP)  :: Pstar, ellipse, c_pressure, delta_min, ice_gamma_fct, &
-                      ice_diff, theta_io, alpha_evp, beta_evp, c_aevp, Cd_oce_ice
+                      ice_diff, theta_io, alpha_evp, beta_evp, c_aevp, Cd_oce_ice, nc_stab
     namelist /ice_dyn/ whichEVP, Pstar, ellipse, c_pressure, delta_min, evp_rheol_steps, &
                        Cd_oce_ice, ice_gamma_fct, ice_diff, theta_io, ice_ave_steps, &
-                       alpha_evp, beta_evp, c_aevp
+                       alpha_evp, beta_evp, c_aevp, ice_vplace, nc_stab
     logical        :: snowdist, new_iclasses
     integer        :: open_water_albedo, iclasses
     real(kind=WP)  :: Sice, h0, h0_s, emiss_ice, emiss_wat, albsn, albsnm, albi, &
@@ -604,6 +609,8 @@ subroutine ice_init(ice, partit, mesh)
     ice%alpha_evp       = alpha_evp
     ice%beta_evp        = beta_evp
     ice%c_aevp          = c_aevp
+    ice%ice_vplace      = ice_vplace
+    ice%nc_stab         = nc_stab
 
     ! set parameters in ice derived type from namelist.ice --> namelist /ice_therm/
     ice%thermo%con      = con
@@ -633,28 +640,42 @@ subroutine ice_init(ice, partit, mesh)
     ! define local vertice & elem array size
     elem_size=myDim_elem2D+eDim_elem2D
     node_size=myDim_nod2D +eDim_nod2D
+    edge_size=myDim_edge2D+eDim_edge2D
+    
+    if (ice_vplace == 0) then
+        velocity_size = node_size
+    else if (ice_vplace == 1) then
+        velocity_size = edge_size
+    end if
 
     !___________________________________________________________________________
     ! allocate/initialise arrays in ice derived type
     ! initialise velocity and stress related arrays in ice derived type
-    allocate(ice%uice(                 node_size))
-    allocate(ice%uice_rhs(             node_size))
-    allocate(ice%uice_old(             node_size))
-    allocate(ice%vice(                 node_size))
-    allocate(ice%vice_rhs(             node_size))
-    allocate(ice%vice_old(             node_size))
-    allocate(ice%stress_atmice_x(      node_size))
-    allocate(ice%stress_iceoce_x(      node_size))
-    allocate(ice%stress_atmice_y(      node_size))
-    allocate(ice%stress_iceoce_y(      node_size))
-    allocate(ice%h_ice          (      node_size))
-    allocate(ice%h_snow         (      node_size))    
+    allocate(ice%uice(              velocity_size))
+    allocate(ice%uice_rhs(          velocity_size))
+    allocate(ice%uice_old(          velocity_size))
+    allocate(ice%vice(              velocity_size))
+    allocate(ice%vice_rhs(          velocity_size))
+    allocate(ice%vice_old(          velocity_size))
+    allocate(ice%stress_iceoce_x(   velocity_size))
+    allocate(ice%stress_iceoce_y(   velocity_size))
+
+    allocate(ice%stress_atmice_x(   node_size))
+    allocate(ice%stress_atmice_y(   node_size))
+    allocate(ice%h_ice          (   node_size))
+    allocate(ice%h_snow         (   node_size))
+    allocate(ice%uice_nod       (   node_size))
+    allocate(ice%vice_nod       (   node_size))
+    allocate(ice%zeta_e         (   edge_size))
+    
     ice%uice            = 0.0_WP
+    ice%uice_nod        = 0.0_WP
     ice%uice_rhs        = 0.0_WP
     ice%uice_old        = 0.0_WP
     ice%stress_atmice_x = 0.0_WP
     ice%stress_iceoce_x = 0.0_WP
     ice%vice            = 0.0_WP
+    ice%vice_nod        = 0.0_WP
     ice%vice_rhs        = 0.0_WP
     ice%vice_old        = 0.0_WP
     ice%stress_atmice_y = 0.0_WP
@@ -662,8 +683,8 @@ subroutine ice_init(ice, partit, mesh)
     ice%h_ice           = 0.0_WP
     ice%h_snow          = 0.0_WP    
     if (ice%whichEVP /= 0) then
-        allocate(ice%uice_aux(         node_size))
-        allocate(ice%vice_aux(         node_size))
+        allocate(ice%uice_aux(         velocity_size))
+        allocate(ice%vice_aux(         velocity_size))
         ice%uice_aux    = 0.0_WP
         ice%vice_aux    = 0.0_WP
     end if
@@ -700,7 +721,7 @@ subroutine ice_init(ice, partit, mesh)
     do n = 1, ice%num_itracers
         allocate(ice%data(n)%values(    node_size))
         allocate(ice%data(n)%values_old(node_size))
-        allocate(ice%data(n)%values_rhs(node_size))
+        allocate(ice%data(n)%values_rhs(velocity_size))
         allocate(ice%data(n)%values_div_rhs(node_size))
         allocate(ice%data(n)%dvalues(   node_size))
         allocate(ice%data(n)%valuesl(   node_size))

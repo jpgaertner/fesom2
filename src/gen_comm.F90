@@ -526,6 +526,198 @@ subroutine communication_elemn(partit, mesh)
   deallocate(recv_from_pe, send_to_pes)
 end subroutine communication_elemn
 !==========================================================================
+subroutine communication_edgen(partit, mesh)
+  use MOD_MESH
+  USE MOD_PARTIT
+  USE MOD_PARSUP
+  implicit none
+  type(t_mesh),   intent(in),    target :: mesh
+  type(t_partit), intent(inout), target :: partit
+  ! ==========
+  integer                  :: elem, edge, k, k_ed, np, l
+  integer                  :: elnodes(3), eledges(3)
+  integer                  :: num_recv(0:partit%npes-1), num_send(0:partit%npes-1)
+  integer, allocatable     :: recv_from_pe(:), send_to_pe(:,:)
+  integer                  :: r_count, s_count, prank
+  integer                  :: IERR
+  logical                  :: max_laendereck_too_small=.false.
+  ! ==========
+  integer, pointer         :: rPEnum, sPEnum
+  integer, pointer         :: rPE(:), sPE(:)
+  integer, pointer         :: rptr(:), sptr(:)
+  integer, pointer         :: rlist(:), slist(:)
+  ! ==========
+
+#include "associate_part_def.h"
+#include "associate_mesh_ini.h"
+#include "associate_part_ass.h"
+
+   rPEnum   => com_edge2D%rPEnum
+   sPEnum   => com_edge2D%sPEnum
+   rPE      => com_edge2D%rPE
+   sPE      => com_edge2D%sPE
+   rptr     => com_edge2D%rptr
+   sptr     => com_edge2D%sptr
+   rlist    => com_edge2D%rlist
+   slist    => com_edge2D%slist
+
+   ! Find communication rules for edge exchange
+   ! Assume we have 2D partitioning vector in part:
+   ! part: nod2D --> List of PEs
+   !       #node |-> #PE (labelled from 0 to npes-1)
+   ! An edge belongs to PE if any of its nodes belongs to PE.
+   
+   ! ==========
+   ! the lists recv_from_pe, send_from_pe contain the PE (labelled from 0 to npes-1) an edge is received from/ sent to
+   ! ==========
+   allocate(recv_from_pe(edge2D), send_to_pe(MAX_LAENDERECK, edge2D), STAT=IERR)
+   if (IERR /= 0) then
+      write (*,*) 'Could not allocate arrays in communication_edgen'
+      stop
+   endif
+
+   num_recv(0:npes-1) = 0
+   num_send(0:npes-1) = 0
+   recv_from_pe(1:edge2D) = -1
+   send_to_pe(1:MAX_LAENDERECK,1:edge2D) = -1
+
+   do elem = 1, elem2D
+      elnodes = elem2D_nodes(:,elem)
+      eledges = elem_edges(:,elem)
+
+      ! Check for edges to be received
+      do k = 1, 3
+         ! check if node is in mype
+         if (part(elnodes(k)) == mype) then
+            ! mype might need the edge opposite of elnodes(k)
+            k_ed = modulo(k,3) + 1 ! eledges(k_ed) is opposite of elnodes(k)
+            ! only receive opposite edge if none of its nodes is in mype
+            if (part(edges(1,eledges(k_ed))) /= mype .and. part(edges(2,eledges(k_ed))) /= mype) then
+               ! check if the edge is still not collected
+               if (recv_from_pe(eledges(k_ed)) == -1) then
+                  np = part(edges(1,eledges(k_ed))) ! PE of the first node of the edge
+                  num_recv(np) = num_recv(np) + 1   ! = 1 if an edge is received from PE np
+                  recv_from_pe(eledges(k_ed)) = np  ! PE from which the edge is received
+               end if
+            end if
+         end if
+      end do
+
+      ! Check for edges to be sent
+      do k = 1, 3
+         np = part(elnodes(k))
+         ! check if node is outside of mype
+         if (np /= mype) then
+            ! np might need the edge opposite of elnodes(k) -> eledges(k_ed)
+            k_ed = modulo(k,3) + 1
+            ! check if eledges(k_ed) is in np
+            if (part(edges(1,eledges(k_ed))) == np .or. part(edges(2,eledges(k_ed))) == np) cycle
+            ! check if eledges(k_ed) is in mype
+            ! only check for edges(1,...) so that the edge is not send from two PEs
+            if (part(edges(1,eledges(k_ed))) == mype) then
+               do l = 1, MAX_LAENDERECK
+                  ! check if the edge is already collected
+                  if (send_to_pe(l,eledges(k_ed)) == np) then
+                     exit
+                  ! only add edge to send if it is not already collected
+                  else if (send_to_pe(l,eledges(k_ed)) == -1) then
+                     send_to_pe(l,eledges(k_ed)) = np    ! PE the edge is sent to
+                     num_send(np) = num_send(np) + 1     ! = 1 if an edge is sent to PE np
+                     exit
+                  else if (l == MAX_LAENDERECK) then
+                     ! if the loop is not exited before this, the number of
+                     ! neighboring PEs is too large
+                     max_laendereck_too_small = .true.
+                  end if
+               end do
+            end if
+         end if
+      end do
+   end do
+
+   if (max_laendereck_too_small) then
+      print *, 'Increase MAX_LAENDERECK in gen_modules_partitioning.F90 and recompile'
+      stop
+   endif
+
+   !! ==========
+   !! the number of PEs information is received from/ sent to
+   !! ==========
+   rPEnum = count(num_send(0:npes-1) > 0)
+   sPEnum = count(num_recv(0:npes-1) > 0)
+
+   ! ==========
+   ! the lists of PEs information is received from/ sent to
+   ! ==========
+   r_count = 0
+   s_count = 0
+   
+   do np = 0, npes-1
+      if (num_recv(np) /= 0) then   ! if something is received from PE np
+         r_count = r_count+1
+         rPE(r_count) = np          ! add np to the list of PEs that mype receives from
+      end if
+      if (num_send(np) /= 0) then   ! if something is sent to PE np
+         s_count = s_count+1
+         sPE(s_count) = np          ! add np to the list of PEs that mype sends to
+      end if
+   end do
+
+   !! ==========
+   !! the lists rptr/ sptr are used as pointers
+   !! ==========
+   rptr(1) = 1
+   sptr(1) = 1
+   
+   do r_count = 1, rPEnum
+      np = rPE(r_count)
+      rptr(r_count+1) = rptr(r_count) + num_recv(np)
+   end do
+
+   do s_count = 1, sPEnum
+      np = sPE(s_count)
+      sptr(s_count+1) = sptr(s_count) + num_send(np)
+   end do
+
+   ! ==========
+   ! the lists rlist/ slist contain the edges that are received/ sent
+   !! ==========
+   allocate(rlist(rptr(rPEnum+1)), slist(sptr(sPEnum+1)))
+
+   r_count = 0
+   s_count = 0
+   
+   do np = 1, rPEnum
+      prank = rPE(np)
+
+      do edge = 1, edge2D
+         if (recv_from_pe(edge) == prank) then
+            r_count = r_count+1
+            rlist(r_count) = edge
+         end if
+      end do
+   end do
+
+   do np = 1, sPEnum
+      prank = sPE(np)
+
+      do edge = 1, edge2D
+         if (any(send_to_pe(:,edge) == prank)) then
+            s_count = s_count+1
+            slist(s_count) = edge
+         end if
+      end do
+   end do
+
+   com_edge2D%rlist = rlist
+   com_edge2D%slist = slist
+
+   deallocate(recv_from_pe, send_to_pe)
+
+
+end subroutine communication_edgen
+
+!==========================================================================
 subroutine mymesh(partit, mesh)
   use MOD_MESH
   USE MOD_PARTIT

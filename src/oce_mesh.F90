@@ -876,6 +876,26 @@ end if
  n=com_elem2D_full%sptr(com_elem2D_full%sPEnum+1)-1
  ALLOCATE(com_elem2D_full%slist(n))
  read(fileID,*) com_elem2D_full%slist
+
+ read(fileID,*) com_edge2D%rPEnum
+ if (com_edge2D%rPEnum > MAX_NEIGHBOR_PARTITIONS) then
+    print *,'Increase MAX_NEIGHBOR_PARTITIONS in gen_modules_partitioning.F90 and recompile'
+    stop
+ endif
+ read(fileID,*) com_edge2D%rPE(1:com_edge2D%rPEnum)
+ read(fileID,*) com_edge2D%rptr(1:com_edge2D%rPEnum+1)
+ allocate(com_edge2D%rlist(eDim_edge2D))
+ read(fileID,*) com_edge2D%rlist
+ read(fileID,*) com_edge2D%sPEnum
+ if (com_edge2D%sPEnum > MAX_NEIGHBOR_PARTITIONS) then
+    print *,'Increase MAX_NEIGHBOR_PARTITIONS in gen_modules_partitioning.F90 and recompile'
+    stop
+ endif
+ read(fileID,*) com_edge2D%sPE(1:com_edge2D%sPEnum)
+ read(fileID,*) com_edge2D%sptr(1:com_edge2D%sPEnum+1)
+ allocate(com_edge2D%slist(com_edge2D%sptr(com_edge2D%sPEnum+1)-1))
+ read(fileID,*) com_edge2D%slist
+
  close(fileID)
 
  if (mype==0) write(*,*) 'communication arrays are read'

@@ -75,6 +75,78 @@ module ice_maEVPdynamics_interface
         end subroutine
    end interface
 end module
+
+module mod_nc_stabilization
+contains
+subroutine nc_stabilization(ice, partit, mesh)
+    USE MOD_ICE
+    USE MOD_PARTIT
+    USE MOD_PARSUP
+    USE MOD_MESH
+    use o_param
+    use g_config
+    use o_arrays
+    use g_comm_auto
+    implicit none
+    type(t_ice),    intent(inout), target :: ice
+    type(t_partit), intent(inout), target :: partit
+    type(t_mesh)  , intent(in)   , target :: mesh
+    !___________________________________________________________________________
+    integer                               :: el, eledges(3)
+    real(kind=WP)                         :: uu(3), vv(3), cx(3)
+    real(kind=WP), allocatable            :: udif(:), vdif(:)
+    real(kind=WP), dimension(:), pointer  :: u_ice_aux, v_ice_aux, u_rhs_ice, v_rhs_ice, zeta_e
+#include "associate_part_def.h"
+#include "associate_mesh_def.h"
+#include "associate_part_ass.h"
+#include "associate_mesh_ass.h"
+    u_ice_aux => ice%uice_aux(:)
+    v_ice_aux => ice%vice_aux(:)
+    u_rhs_ice => ice%uice_rhs(:)
+    v_rhs_ice => ice%vice_rhs(:)
+    zeta_e    => ice%zeta_e(:)
+
+    ! cycle 1: assemble differences
+    allocate(udif(edge2D), vdif(edge2D))
+    udif = 0.0_WP
+    vdif = 0.0_WP
+
+    do el = 1, myDim_elem2D
+        eledges = elem_edges(:, el)
+
+        uu = u_ice_aux(eledges)
+        vv = v_ice_aux(eledges)
+        udif(eledges(1))=udif(eledges(1))-uu(2)+uu(3)
+        vdif(eledges(1))=vdif(eledges(1))-vv(2)+vv(3)
+        udif(eledges(2))=udif(eledges(2))+uu(1)-uu(3)
+        vdif(eledges(2))=vdif(eledges(2))+vv(1)-vv(3)
+        udif(eledges(3))=udif(eledges(3))-uu(1)+uu(2)
+        vdif(eledges(3))=vdif(eledges(3))-vv(1)+vv(2)
+    end do
+
+    call exchange_edge2D(udif, partit)
+    call exchange_edge2D(vdif, partit)
+
+    ! cycle 2: assemble contributions to test functions
+    do el = 1, myDim_elem2D
+        eledges = elem_edges(:, el)
+
+        cx = -ice%nc_stab * zeta_e(eledges)
+        uu = udif(eledges)
+        vv = vdif(eledges)
+
+        u_rhs_ice(eledges(1))=u_rhs_ice(eledges(1))+cx(1)*(uu(2)-uu(3))
+        v_rhs_ice(eledges(1))=v_rhs_ice(eledges(1))+cx(1)*(vv(2)-vv(3))
+        u_rhs_ice(eledges(2))=u_rhs_ice(eledges(2))+cx(2)*(uu(3)-uu(1))
+        v_rhs_ice(eledges(2))=v_rhs_ice(eledges(2))+cx(2)*(vv(3)-vv(1))
+        u_rhs_ice(eledges(3))=u_rhs_ice(eledges(3))+cx(3)*(uu(1)-uu(2))
+        v_rhs_ice(eledges(3))=v_rhs_ice(eledges(3))+cx(3)*(vv(1)-vv(2))
+    end do
+
+    deallocate(udif, vdif)
+
+end subroutine
+end module
 !
 !
 !_______________________________________________________________________________
@@ -435,6 +507,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     use g_config
     use o_arrays
     use g_comm_auto
+    use mod_nc_stabilization
 #if defined (__icepack)
     use icedrv_main,   only: rdg_conv_elem, rdg_shear_elem, strength
     use icedrv_main,   only: icepack_to_fesom
@@ -446,11 +519,11 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     !___________________________________________________________________________
     integer          :: steps, shortstep, i, ed,n
     real(kind=WP)    :: rdt, drag, det
-    real(kind=WP)    :: inv_thickness(partit%myDim_nod2D), umod, rhsu, rhsv
-    logical          :: ice_el(partit%myDim_elem2D), ice_nod(partit%myDim_nod2D)
+    real(kind=WP)    :: umod, rhsu, rhsv
+    logical          :: ice_el(partit%myDim_elem2D)
     !NR for stress_tensor_m
-    integer         :: el, elnodes(3)
-    real(kind=WP)   :: dx(3), dy(3), msum, asum
+    integer         :: el, elnodes(3), eledges(3)
+    real(kind=WP)   :: msum, asum
     real(kind=WP)   :: eps1, eps2, pressure, pressure_fac(partit%myDim_elem2D), delta
     real(kind=WP)   :: val3, meancos, vale
     real(kind=WP)   :: det1, det2, r1, r2, r3, si1, si2
@@ -458,7 +531,6 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     integer        :: k, row
     real(kind=WP)  :: vol
     real(kind=WP)  :: mf,aa, bb,p_ice(3)
-    real(kind=WP)  :: mass(partit%myDim_nod2D)
     !___________________________________________________________________________
     ! pointer on necessary derived types
     real(kind=WP), dimension(:), pointer  :: u_ice, v_ice
@@ -474,10 +546,22 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     real(kind=WP), dimension(:), pointer  :: a_ice_old, m_ice_old, m_snow_old
 #endif
     real(kind=WP)              , pointer  :: rhoice, rhosno, inv_rhowat
+    !___________________________________________________________________________
+    integer, pointer                                :: ice_vplace
+    real(kind=WP), dimension(:), pointer            :: u_ice_nod, v_ice_nod
+    real(kind=WP), dimension(3,partit%myDim_elem2D) :: dx, dy
+    integer, dimension(3,partit%myDim_elem2D)       :: placement
+    integer                                         :: myDim, eDim
+    logical, allocatable                            :: ice_exists(:)
+    real(kind=WP), allocatable                      :: inv_thickness(:), mass(:)
+    real(kind=WP)                                   :: a_ice_ed, area_ed, uw, vw, stx, sty, cor
+    real(kind=WP), dimension(:), pointer            :: zeta_e
+    !___________________________________________________________________________
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
+    ice_vplace      => ice%ice_vplace
     u_ice           => ice%uice(:)
     v_ice           => ice%vice(:)
     a_ice           => ice%data(1)%values(:)
@@ -508,7 +592,9 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     rhoice          => ice%thermo%rhoice
     rhosno          => ice%thermo%rhosno
     inv_rhowat      => ice%thermo%inv_rhowat
-
+    u_ice_nod       => ice%uice_nod(:)
+    v_ice_nod       => ice%vice_nod(:)
+    zeta_e          => ice%zeta_e(:)
     !___________________________________________________________________________
     val3=1.0_WP/3.0_WP
     vale=1.0_WP/(ice%ellipse**2)
@@ -516,6 +602,29 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     det1=ice%alpha_evp*det2
     rdt=ice%ice_dt
     steps=ice%evp_rheol_steps
+
+    if (ice_vplace == 0) then
+        do el = 1, myDim_elem2D
+            dx(:,el) = gradient_sca(1:3,el)
+            dy(:,el) = gradient_sca(4:6,el)
+            placement(:,el) = elem2D_nodes(:,el)
+        end do
+        myDim = myDim_nod2D
+        eDim = eDim_nod2D
+    else if (ice_vplace == 1) then
+        do el = 1, myDim_elem2D
+            dx(:,el) = - 2.0_WP * gradient_sca(1:3,el)
+            dy(:,el) = - 2.0_WP * gradient_sca(4:6,el)
+            placement(:,el) = elem_edges(:,el)
+        end do
+        myDim = myDim_edge2D
+        eDim = eDim_edge2D
+    end if
+
+    allocate(ice_exists(myDim))
+    allocate(inv_thickness(myDim))
+    allocate(mass(myDim))
+
 
     !___________________________________________________________________________
     u_ice_aux=u_ice    ! Initialize solver variables
@@ -536,7 +645,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     !  call ssh2rhs
     ! use rhs_m and rhs_a for storing the contribution from elevation:
 !$OMP PARALLEL DO
-    do row=1, myDim_nod2d
+    do row=1, myDim
         rhs_a(row)=0.0_WP
         rhs_m(row)=0.0_WP
     end do
@@ -555,8 +664,6 @@ subroutine EVPdynamics_m(ice, partit, mesh)
 
             !_______________________________________________________________________
             vol=elem_area(el)
-            dx=gradient_sca(1:3,el)
-            dy=gradient_sca(4:6,el)
 
             !_______________________________________________________________________
             ! add pressure gradient from sea ice --> in case of floating sea ice
@@ -567,16 +674,16 @@ subroutine EVPdynamics_m(ice, partit, mesh)
 
             !_______________________________________________________________________
             bb=g*val3*vol
-            aa=bb*sum(dx*(elevation(elnodes)+p_ice))
-            bb=bb*sum(dy*(elevation(elnodes)+p_ice))
+            aa=bb*sum(gradient_sca(1:3,el)*(elevation(elnodes)+p_ice))
+            bb=bb*sum(gradient_sca(4:6,el)*(elevation(elnodes)+p_ice))
             do n=1, 3
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
                call omp_set_lock  (partit%plock(elnodes(n)))
 #else
 !$OMP ORDERED
 #endif
-               rhs_a(elnodes(n))=rhs_a(elnodes(n))-aa
-               rhs_m(elnodes(n))=rhs_m(elnodes(n))-bb
+               rhs_a(placement(n,el))=rhs_a(placement(n,el)) - aa
+               rhs_m(placement(n,el))=rhs_m(placement(n,el)) - bb
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
                call omp_unset_lock(partit%plock(elnodes(n)))
 #else
@@ -596,19 +703,17 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             if (ulevels(el) > 1)  cycle
 
             vol=elem_area(el)
-            dx=gradient_sca(1:3,el)
-            dy=gradient_sca(4:6,el)
             bb=g*val3*vol
-            aa=bb*sum(dx*elevation(elnodes))
-            bb=bb*sum(dy*elevation(elnodes))
+            aa=bb*sum(gradient_sca(1:3,el)*elevation(elnodes))
+            bb=bb*sum(gradient_sca(4:6,el)*elevation(elnodes))
             do n=1, 3
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
             call omp_set_lock  (partit%plock(elnodes(n)))
 #else
 !$OMP ORDERED
 #endif
-               rhs_a(elnodes(n))=rhs_a(elnodes(n))-aa
-               rhs_m(elnodes(n))=rhs_m(elnodes(n))-bb
+               rhs_a(placement(n,el))=rhs_a(placement(n,el)) - aa
+               rhs_m(placement(n,el))=rhs_m(placement(n,el)) - bb
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
             call omp_unset_lock(partit%plock(elnodes(n)))
 #else
@@ -622,34 +727,72 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     !___________________________________________________________________________
     ! precompute thickness (the inverse is needed) and mass (scaled by area)
 !$OMP PARALLEL DO
-    do i=1,myDim_nod2D
-        inv_thickness(i) = 0._WP
-        mass(i) = 0._WP
-        ice_nod(i) = .false.
-        !_______________________________________________________________________
-        ! if cavity ndoe skip it
-        if ( ulevels_nod2d(i)>1 ) cycle
+    if (ice_vplace == 0) then
+        do i=1,myDim_nod2D
+            inv_thickness(i) = 0._WP
+            mass(i) = 0._WP
+            ice_exists(i) = .false.
+            !_______________________________________________________________________
+            ! if cavity node skip it
+            if ( ulevels_nod2d(i)>1 ) cycle
 
-        if (a_ice(i) >= 0.01_WP) then
-            inv_thickness(i) = (rhoice*m_ice(i)+rhosno*m_snow(i))/a_ice(i)
-            inv_thickness(i) = 1.0_WP/max(inv_thickness(i), 9.0_WP)  ! Limit the mass
+            if (a_ice(i) >= 0.01_WP) then
+                inv_thickness(i) = (rhoice*m_ice(i)+rhosno*m_snow(i))/a_ice(i)
+                inv_thickness(i) = 1.0_WP/max(inv_thickness(i), 9.0_WP)  ! Limit the mass
 
-            mass(i) = (m_ice(i)*rhoice+m_snow(i)*rhosno)
-            mass(i) = mass(i)/((1.0_WP+mass(i)*mass(i))*area(1,i))
+                mass(i) = (m_ice(i)*rhoice+m_snow(i)*rhosno)
+                mass(i) = mass(i)/((1.0_WP+mass(i)*mass(i))*area(1,i))
 
-            ! scale rhs_a, rhs_m, too.
-            rhs_a(i) = rhs_a(i)/area(1,i)
-            rhs_m(i) = rhs_m(i)/area(1,i)
+                ! scale rhs_a, rhs_m, too.
+                rhs_a(i) = rhs_a(i)/area(1,i)
+                rhs_m(i) = rhs_m(i)/area(1,i)
 
-            ice_nod(i) = .true.
-        endif
-    enddo
+                ice_exists(i) = .true.
+            endif
+        enddo
+    else if (ice_vplace == 1) then
+        do i=1,myDim_edge2D
+            inv_thickness(i) = 0.0_WP
+            mass(i) = 0.0_WP
+            ice_exists(i) = .false.
+
+            ! if cavity edge skip it (before checking if the second element has a cavity node, check if it exists)
+            if ( (ulevels(edge_tri(1,i))>1) .or. &
+                ( edge_tri(2,i)>0 .and. ulevels(edge_tri(2,i))>1) ) cycle
+
+            if (a_ice(edges(1,i)) >= 0.01_WP .and. a_ice(edges(2,i)) >= 0.01_WP) then
+                a_ice_ed = 0.5_WP * sum(a_ice(edges(:,i))) ! average the two adjacent nodes of the edge
+                inv_thickness(i) = 0.5_WP * sum(rhoice*m_ice(edges(:,i))+rhosno*m_snow(edges(:,i)))/a_ice_ed
+                inv_thickness(i) = 1.0_WP/max(inv_thickness(i), 9.0_WP)  ! Limit the mass
+
+                ! the area associated with the edge
+                if (edge_tri(2,i)>0) then
+                    area_ed = sum(elem_area(edge_tri(:,i))) * val3 
+                else
+                    area_ed = elem_area(edge_tri(1,i)) * val3
+                end if
+                
+                mass(i) = 0.5_WP * sum(m_ice(edges(:,i))*rhoice+m_snow(edges(:,i))*rhosno)
+                mass(i) = mass(i)/((1.0_WP+mass(i)*mass(i))*area_ed)
+
+                ! scale rhs_a, rhs_m, too.
+                rhs_a(i) = rhs_a(i)/area_ed
+                rhs_m(i) = rhs_m(i)/area_ed
+
+                ice_exists(i) = .true.
+            endif
+        enddo
+    end if
+
 !$OMP END PARALLEL DO
     !___________________________________________________________________________
     ! precompute pressure factor
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(el, elnodes, msum, asum)
+            
+    zeta_e = 0.0_WP
     do el=1,myDim_elem2D
         elnodes=elem2D_nodes(:,el)
+        eledges=elem_edges(:,el)
         pressure_fac(el) = 0._WP
         ice_el(el) = .false.
 
@@ -663,10 +806,14 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             asum=sum(a_ice(elnodes))*val3
             pressure_fac(el) = det2*ice%pstar*msum*exp(-ice%c_pressure*(1.0_WP-asum))
         endif
+
+        zeta_e(eledges) = zeta_e(eledges) + 0.5_WP * ice%pstar * sum(m_ice(elnodes) * exp(-ice%c_pressure*(1.0_WP-a_ice(elnodes)))) * val3 * elem_area(el) / ice%ice_dt 
     end do
+    call exchange_edge2D(zeta_e, partit)
+
 !$OMP END PARALLEL DO
 !$OMP PARALLEL DO
-    do row=1, myDim_nod2d
+    do row=1, myDim
         u_rhs_ice(row)=0.0_WP
         v_rhs_ice(row)=0.0_WP
     end do
@@ -692,17 +839,14 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             !___________________________________________________________________
             if(ice_el(el)) then
 
-                elnodes=elem2D_nodes(:,el)
-                dx=gradient_sca(1:3,el)
-                dy=gradient_sca(4:6,el)
                 ! METRICS:
                 meancos = val3*metric_factor(el)
                 !
                 ! ====== Deformation rate tensor on element elem:
-                eps11(el) = sum(dx(:)*u_ice_aux(elnodes)) - sum(v_ice_aux(elnodes))*meancos                !metrics
-                eps22(el) = sum(dy(:)*v_ice_aux(elnodes))
-                eps12(el) = 0.5_WP*(sum(dy(:)*u_ice_aux(elnodes) + dx(:)*v_ice_aux(elnodes)) &
-                                +sum(u_ice_aux(elnodes))*meancos )          !metrics
+                eps11(el) = sum(dx(:,el)*u_ice_aux(placement(:,el))) - sum(v_ice_aux(placement(:,el)))*meancos                !metrics
+                eps22(el) = sum(dy(:,el)*v_ice_aux(placement(:,el)))
+                eps12(el) = 0.5_WP*(sum(dy(:,el)*u_ice_aux(placement(:,el)) + dx(:,el)*v_ice_aux(placement(:,el))) &
+                                +sum(u_ice_aux(placement(:,el)))*meancos )          !metrics
 
                 ! ======= Switch to eps1,eps2
                 eps1 = eps11(el) + eps22(el)
@@ -737,52 +881,52 @@ subroutine EVPdynamics_m(ice, partit, mesh)
                 ! add internal stress to the rhs
                 ! SD, 30.07.2014
                 !-----------------------------------------------------------------
-                if (elnodes(1) <= myDim_nod2D) then
+                if (placement(1,el) <= myDim) then
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
-                    call omp_set_lock  (partit%plock(elnodes(1)))
+                    call omp_set_lock  (partit%plock(placement(1,el)))
 #else
 !$OMP ORDERED
 #endif
-                    u_rhs_ice(elnodes(1)) = u_rhs_ice(elnodes(1)) - elem_area(el)* &
-                            (sigma11(el)*dx(1)+sigma12(el)*(dy(1) + meancos))                         !metrics
-                    v_rhs_ice(elnodes(1)) = v_rhs_ice(elnodes(1)) - elem_area(el)* &
-                            (sigma12(el)*dx(1)+sigma22(el)*dy(1) - sigma11(el)*meancos)               !metrics
+                    u_rhs_ice(placement(1,el)) = u_rhs_ice(placement(1,el)) - elem_area(el)* &
+                            (sigma11(el)*dx(1,el)+sigma12(el)*(dy(1,el) + meancos))                         !metrics
+                    v_rhs_ice(placement(1,el)) = v_rhs_ice(placement(1,el)) - elem_area(el)* &
+                            (sigma12(el)*dx(1,el)+sigma22(el)*dy(1,el) - sigma11(el)*meancos)               !metrics
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
-                    call omp_unset_lock(partit%plock(elnodes(1)))
+                    call omp_unset_lock(partit%plock(placement(1,el)))
 #else
 !$OMP END ORDERED
 #endif
                 end if
 
-                if (elnodes(2) <= myDim_nod2D) then
+                if (placement(2,el) <= myDim) then
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
-                    call omp_set_lock  (partit%plock(elnodes(2)))
+                    call omp_set_lock  (partit%plock(placement(2,el)))
 #else
 !$OMP ORDERED
 #endif
-                    u_rhs_ice(elnodes(2)) = u_rhs_ice(elnodes(2)) - elem_area(el)* &
-                            (sigma11(el)*dx(2)+sigma12(el)*(dy(2) + meancos))                         !metrics
-                    v_rhs_ice(elnodes(2)) = v_rhs_ice(elnodes(2)) - elem_area(el)* &
-                            (sigma12(el)*dx(2)+sigma22(el)*dy(2) - sigma11(el)*meancos)               !metrics
+                    u_rhs_ice(placement(2,el)) = u_rhs_ice(placement(2,el)) - elem_area(el)* &
+                            (sigma11(el)*dx(2,el)+sigma12(el)*(dy(2,el) + meancos))                         !metrics
+                    v_rhs_ice(placement(2,el)) = v_rhs_ice(placement(2,el)) - elem_area(el)* &
+                            (sigma12(el)*dx(2,el)+sigma22(el)*dy(2,el) - sigma11(el)*meancos)               !metrics
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
-                call omp_unset_lock(partit%plock(elnodes(2)))
+                    call omp_unset_lock(partit%plock(placement(2,el)))
 #else
 !$OMP END ORDERED
 #endif
                 end if
 
-                if (elnodes(3) <= myDim_nod2D) then
+                if (placement(3,el) <= myDim) then
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
-                    call omp_set_lock  (partit%plock(elnodes(3)))
+                    call omp_set_lock  (partit%plock(placement(3,el)))
 #else
 !$OMP ORDERED
 #endif
-                    u_rhs_ice(elnodes(3)) = u_rhs_ice(elnodes(3)) - elem_area(el)* &
-                            (sigma11(el)*dx(3)+sigma12(el)*(dy(3) + meancos))                         !metrics
-                    v_rhs_ice(elnodes(3)) = v_rhs_ice(elnodes(3)) - elem_area(el)* &
-                            (sigma12(el)*dx(3)+sigma22(el)*dy(3) - sigma11(el)*meancos)               !metrics
+                    u_rhs_ice(placement(3,el)) = u_rhs_ice(placement(3,el)) - elem_area(el)* &
+                            (sigma11(el)*dx(3,el)+sigma12(el)*(dy(3,el) + meancos))                         !metrics
+                    v_rhs_ice(placement(3,el)) = v_rhs_ice(placement(3,el)) - elem_area(el)* &
+                            (sigma12(el)*dx(3,el)+sigma22(el)*dy(3,el) - sigma11(el)*meancos)               !metrics
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
-                   call omp_unset_lock(partit%plock(elnodes(3)))
+                   call omp_unset_lock(partit%plock(placement(3,el)))
 #else
 !$OMP END ORDERED
 #endif
@@ -790,94 +934,199 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             end if
         end do ! --> do el=1,myDim_elem2D
 !$OMP END DO
+        if (ice_vplace == 1) then
+            call nc_stabilization(ice, partit, mesh)
+        end if
 !$OMP DO
-        do i=1, myDim_nod2d
-            !___________________________________________________________________
-            if (ulevels_nod2D(i)>1) cycle
+        if (ice_vplace == 0) then
+            do i=1, myDim_nod2d
+                !___________________________________________________________________
+                if (ulevels_nod2D(i)>1) cycle
 
-            !___________________________________________________________________
-            if (ice_nod(i)) then                   ! Skip if ice is absent
-                u_rhs_ice(i) = u_rhs_ice(i)*mass(i) + rhs_a(i)
-                v_rhs_ice(i) = v_rhs_ice(i)*mass(i) + rhs_m(i)
-                ! end do   !NR fuse loops
-                !============= stress2rhs_m ends ======================
-                !    do i=1,myDim_nod2D
-                umod = sqrt((u_ice_aux(i)-u_w(i))**2+(v_ice_aux(i)-v_w(i))**2)
-                drag = rdt*ice%cd_oce_ice*umod*density_0*inv_thickness(i)
+                !___________________________________________________________________
+                if (ice_exists(i)) then                   ! Skip if ice is absent
 
-                !rhs for water stress, air stress, and u_rhs_ice/v (internal stress + ssh)
-                rhsu = u_ice(i)+drag*u_w(i)+rdt*(inv_thickness(i)*stress_atmice_x(i)+u_rhs_ice(i)) + ice%beta_evp*u_ice_aux(i)
-                rhsv = v_ice(i)+drag*v_w(i)+rdt*(inv_thickness(i)*stress_atmice_y(i)+v_rhs_ice(i)) + ice%beta_evp*v_ice_aux(i)
+                    u_rhs_ice(i) = u_rhs_ice(i)*mass(i) + rhs_a(i)
+                    v_rhs_ice(i) = v_rhs_ice(i)*mass(i) + rhs_m(i)
+                    ! end do   !NR fuse loops
+                    !============= stress2rhs_m ends ======================
+                    !    do i=1,myDim_nod2D
+                    umod = sqrt((u_ice_aux(i)-u_w(i))**2+(v_ice_aux(i)-v_w(i))**2)
+                    drag = rdt*ice%cd_oce_ice*umod*density_0*inv_thickness(i)
 
-                !solve (Coriolis and water stress are treated implicitly)
-                det = bc_index_nod2D(i) / ((1.0_WP+ice%beta_evp+drag)**2 + (rdt*mesh%coriolis_node(i))**2)
+                    !rhs for water stress, air stress, and u_rhs_ice/v (internal stress + ssh)
+                    rhsu = u_ice(i)+drag*u_w(i)+rdt*(inv_thickness(i)*stress_atmice_x(i)+u_rhs_ice(i)) + ice%beta_evp*u_ice_aux(i)
+                    rhsv = v_ice(i)+drag*v_w(i)+rdt*(inv_thickness(i)*stress_atmice_y(i)+v_rhs_ice(i)) + ice%beta_evp*v_ice_aux(i)
 
-                u_ice_aux(i) = det*((1.0_WP+ice%beta_evp+drag)*rhsu +rdt*mesh%coriolis_node(i)*rhsv)
-                v_ice_aux(i) = det*((1.0_WP+ice%beta_evp+drag)*rhsv -rdt*mesh%coriolis_node(i)*rhsu)
-            end if
-        end do ! --> do i=1, myDim_nod2d
+                    !solve (Coriolis and water stress are treated implicitly)
+                    det = bc_index_nod2D(i) / ((1.0_WP+ice%beta_evp+drag)**2 + (rdt*mesh%coriolis_node(i))**2)
+
+                    u_ice_aux(i) = det*((1.0_WP+ice%beta_evp+drag)*rhsu +rdt*mesh%coriolis_node(i)*rhsv)
+                    v_ice_aux(i) = det*((1.0_WP+ice%beta_evp+drag)*rhsv -rdt*mesh%coriolis_node(i)*rhsu)
+                end if
+            end do ! --> do i=1, myDim_nod2d
+        else if (ice_vplace == 1) then
+            do i=1, myDim_edge2D
+
+                ! if cavity edge skip it (before checking if the second element has a cavity node, check if it exists)
+                if ( (ulevels(edge_tri(1,i))>1) .or. &
+                        ( edge_tri(2,i)>0 .and. ulevels(edge_tri(2,i))>1) ) cycle
+                
+                if (ice_exists(i)) then
+
+                    u_rhs_ice(i) = u_rhs_ice(i)*mass(i) + rhs_a(i)
+                    v_rhs_ice(i) = v_rhs_ice(i)*mass(i) + rhs_m(i)
+
+                    ! interpolate ocean surface velocity and wind stress from nodes to edges
+                    uw = 0.5_WP * sum(u_w(edges(:,i)))
+                    vw = 0.5_WP * sum(v_w(edges(:,i)))
+                    stx = 0.5_WP * sum(stress_atmice_x(edges(:,i)))
+                    sty = 0.5_WP * sum(stress_atmice_y(edges(:,i)))
+                    cor = 0.5_WP * sum(mesh%coriolis_node(edges(:,i)))
+
+                    umod = sqrt((u_ice_aux(i)-uw)**2+(v_ice_aux(i)-vw)**2)
+                    drag = rdt*ice%cd_oce_ice*umod*density_0*inv_thickness(i)
+
+                    !rhs for water stress, air stress, and u_rhs_ice/v (internal stress + ssh)
+                    rhsu = u_ice(i)+drag*uw+rdt*(inv_thickness(i)*stx+u_rhs_ice(i)) + ice%beta_evp*u_ice_aux(i)
+                    rhsv = v_ice(i)+drag*vw+rdt*(inv_thickness(i)*sty+v_rhs_ice(i)) + ice%beta_evp*v_ice_aux(i)
+
+                    !solve (Coriolis and water stress are treated implicitly)
+                    det = minval(bc_index_nod2D(edges(:,i))) / ((1.0_WP+ice%beta_evp+drag)**2 + (rdt*cor)**2)
+
+                    u_ice_aux(i) = det*((1.0_WP+ice%beta_evp+drag)*rhsu +rdt*cor*rhsv)
+                    v_ice_aux(i) = det*((1.0_WP+ice%beta_evp+drag)*rhsv -rdt*cor*rhsu)
+                end if
+            end do ! --> do i=1,myDim_edge2D
+        end if
 !$OMP END DO
         !_______________________________________________________________________
         ! apply sea ice velocity boundary condition
 !$OMP DO
-        do ed=1,myDim_edge2D
-            !___________________________________________________________________
-            ! apply coastal sea ice velocity boundary conditions
-            if (myList_edge2D(ed) > edge2D_in) then
-               do n=1, 2
+        if (ice_vplace == 0) then
+            do ed=1,myDim_edge2D
+                !___________________________________________________________________
+                ! apply coastal sea ice velocity boundary conditions
+                if (myList_edge2D(ed) > edge2D_in) then
+                   do n=1, 2
 #if defined(_OPENMP)
-                call omp_set_lock  (partit%plock(edges(n, ed)))
+                    call omp_set_lock  (partit%plock(edges(n, ed)))
 #endif
-                u_ice_aux(edges(n,ed))=0.0_WP
-                v_ice_aux(edges(n,ed))=0.0_WP
+                    u_ice_aux(edges(n,ed))=0.0_WP
+                    v_ice_aux(edges(n,ed))=0.0_WP
 #if defined(_OPENMP)
-                call omp_unset_lock(partit%plock(edges(n,ed)))
+                    call omp_unset_lock(partit%plock(edges(n,ed)))
 #endif
-               end do
-            end if
-
-            !___________________________________________________________________
-            ! apply sea ice velocity boundary conditions at cavity-ocean edge
-            if (use_cavity) then
-                if ( (ulevels(edge_tri(1,ed))>1) .or. &
-                    ( edge_tri(2,ed)>0 .and. ulevels(edge_tri(2,ed))>1) ) then
-                    do n=1, 2
-#if defined(_OPENMP)
-                       call omp_set_lock  (partit%plock(edges(n, ed)))
-#endif
-                       u_ice_aux(edges(n,ed))=0.0_WP
-                       v_ice_aux(edges(n,ed))=0.0_WP
-#if defined(_OPENMP)
-                       call omp_unset_lock(partit%plock(edges(n,ed)))
-#endif
-                    end do
+                   end do
                 end if
-            end if
-        end do ! --> do ed=1,myDim_edge2D
+
+                !___________________________________________________________________
+                ! apply sea ice velocity boundary conditions at cavity-ocean edge
+                if (use_cavity) then
+                    if ( (ulevels(edge_tri(1,ed))>1) .or. &
+                        ( edge_tri(2,ed)>0 .and. ulevels(edge_tri(2,ed))>1) ) then
+                        do n=1, 2
+#if defined(_OPENMP)
+                           call omp_set_lock  (partit%plock(edges(n, ed)))
+#endif
+                           u_ice_aux(edges(n,ed))=0.0_WP
+                           v_ice_aux(edges(n,ed))=0.0_WP
+#if defined(_OPENMP)
+                           call omp_unset_lock(partit%plock(edges(n,ed)))
+#endif
+                        end do
+                    end if
+                end if
+            end do ! --> do ed=1,myDim_edge2D
+        else if (ice_vplace == 1) then
+            do ed=1,myDim_edge2D
+                !___________________________________________________________________
+                ! apply coastal sea ice velocity boundary conditions
+                if (myList_edge2D(ed) > edge2D_in) then
+#if defined(_OPENMP)
+                    call omp_set_lock  (partit%plock(ed))
+#endif
+                    u_ice_aux(ed)=0.0_WP
+                    v_ice_aux(ed)=0.0_WP
+#if defined(_OPENMP)
+                    call omp_unset_lock(partit%plock(ed))
+#endif
+                end if
+
+                !___________________________________________________________________
+                ! apply sea ice velocity boundary conditions at cavity-ocean edge
+                if (use_cavity) then
+                    if ( (ulevels(edge_tri(1,ed))>1) .or. &
+                        ( edge_tri(2,ed)>0 .and. ulevels(edge_tri(2,ed))>1) ) then
+
+                        u_ice_aux(ed)=0.0_WP
+                        v_ice_aux(ed)=0.0_WP
+
+                    end if
+                end if
+            end do ! --> do ed=1,myDim_edge2D
+        end if
 !$OMP END DO
         !_______________________________________________________________________
+        if (ice_vplace == 0) then
 !$OMP MASTER
-        call exchange_nod_begin(u_ice_aux, v_ice_aux, partit)
+            call exchange_nod_begin(u_ice_aux, v_ice_aux, partit)
 !$OMP END MASTER
 !$OMP BARRIER
 !$OMP DO
-        do row=1, myDim_nod2d
-           u_rhs_ice(row)=0.0_WP
-           v_rhs_ice(row)=0.0_WP
-        end do
+            do row=1, myDim_nod2d
+               u_rhs_ice(row)=0.0_WP
+               v_rhs_ice(row)=0.0_WP
+            end do
 !$OMP END DO
 !$OMP MASTER
-        call exchange_nod_end(partit)
+            call exchange_nod_end(partit)
 !$OMP END MASTER
 !$OMP BARRIER
 !$OMP END PARALLEL
+        else if (ice_vplace == 1) then
+            call exchange_edge2D(u_ice_aux, partit)
+            call exchange_edge2D(v_ice_aux, partit)
+
+            do row=1, myDim_edge2D
+                u_rhs_ice(row)=0.0_WP
+                v_rhs_ice(row)=0.0_WP
+            end do
+        end if
     end do ! --> do shortstep=1, steps
+
 !$OMP PARALLEL DO
-    do row=1, myDim_nod2d+eDim_nod2D
+    do row=1, myDim+eDim
        u_ice(row)=u_ice_aux(row)
        v_ice(row)=v_ice_aux(row)
     end do
 !$OMP END PARALLEL DO
+
+    ! interpolate velocities from edges to nodes if necessary
+    if (ice_vplace == 0) then
+        u_ice_nod = u_ice
+        v_ice_nod = v_ice
+    else if (ice_vplace == 1) then
+        u_ice_nod = 0
+        v_ice_nod = 0
+
+        do i = 1, myDim_edge2D
+            ! sum the adjacent edge velocities at the nodes
+            u_ice_nod(edges(1,i)) = u_ice_nod(edges(1,i)) + u_ice(i)
+            u_ice_nod(edges(2,i)) = u_ice_nod(edges(2,i)) + u_ice(i)
+            v_ice_nod(edges(1,i)) = v_ice_nod(edges(1,i)) + v_ice(i)
+            v_ice_nod(edges(2,i)) = v_ice_nod(edges(2,i)) + v_ice(i)
+        end do
+
+        do i = 1, myDim_nod2D
+            ! and divide by the number of adjacent edges
+            u_ice_nod(i) = u_ice_nod(i) / mesh%nn_num(i)
+            v_ice_nod(i) = v_ice_nod(i) / mesh%nn_num(i)
+        end do
+
+    end if
+
+
 end subroutine EVPdynamics_m
 !
 !

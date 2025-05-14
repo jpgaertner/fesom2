@@ -1640,6 +1640,7 @@ subroutine communication_ini(partit, mesh)
      mype = n ! mype is threadprivate and must not be iterator
      call communication_nodn(partit, mesh)
      call communication_elemn(partit, mesh)
+     call communication_edgen(partit, mesh)
      call save_dist_mesh(partit, mesh)         ! Write out communication file com_infoxxxxx.out
   end do
 !$OMP END DO

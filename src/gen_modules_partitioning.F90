@@ -563,8 +563,8 @@ subroutine init_gatherLists(partit)
   endif
 !$OMP MASTER
 #if defined(_OPENMP)
-    allocate(partit%plock(myDim_elem2D+eDim_elem2D)) !allocate with maximum dimention (nELEM> nNODE) 
-    do n=1, myDim_elem2D+eDim_elem2D
+    allocate(partit%plock(myDim_edge2D+eDim_edge2D)) !allocate with maximum dimention (nEdge> nELEM> nNODE) 
+    do n=1, myDim_edge2D+eDim_edge2D
 !experiments showd that OPENMP5 implementation of the lock (201811) is >10% more efficient
 !make sure you use OPENMP v. 5.0
 #if _OPENMP >= 201811

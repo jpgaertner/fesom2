@@ -730,6 +730,74 @@ if (npes>1) then
 
 END SUBROUTINE exchange_nod3D_n_begin
 
+! ========================================================================
+! Communication routine for a 2D field with edge placement of variables
+subroutine exchange_edge2D(edge_array2D, partit)
+use MOD_MESH
+USE MOD_PARTIT
+USE MOD_PARSUP
+IMPLICIT NONE
+
+type :: buff
+  real(real64), allocatable :: array(:)
+end type
+
+type(t_partit), intent(inout), target :: partit
+real(real64),   intent(inout)         :: edge_array2D(:)
+integer                               :: n, rn, sn
+integer                               :: nini, nend, offset
+integer                               :: sreq(partit%com_edge2D%sPEnum), rreq(partit%com_edge2D%rPEnum)
+real(real64), allocatable             :: s_buff(:)
+type(buff)                            :: r_buff(partit%com_edge2D%rPEnum)
+
+#include "associate_part_def.h"
+#include "associate_part_ass.h"
+
+if (npes > 1) then 
+   rn = com_edge2D%rPEnum
+   sn = com_edge2D%sPEnum
+
+   do n = 1, sn
+      nini = com_edge2D%sptr(n)
+      nend = com_edge2D%sptr(n+1) - 1
+      offset = com_edge2D%sptr(n+1) - nini
+
+      allocate(s_buff(size(edge_array2D(com_edge2D%slist(nini:nend)))))
+      s_buff = edge_array2D(com_edge2D%slist(nini:nend))
+
+      call MPI_ISEND(s_buff, offset, MPI_DOUBLE_PRECISION, com_edge2D%sPE(n), &
+                     mype, MPI_COMM_FESOM, sreq(n), MPIerr)
+
+      deallocate(s_buff)
+   end do
+
+   do n = 1, rn
+      nini = com_edge2D%rptr(n)
+      nend = com_edge2D%rptr(n+1) - 1
+      offset = com_edge2D%rptr(n+1) - nini
+
+      allocate(r_buff(n)%array(size(edge_array2D(com_edge2D%rlist(nini:nend)))))
+
+      call MPI_IRECV(r_buff(n)%array, offset, MPI_DOUBLE_PRECISION, com_edge2D%rPE(n), &
+                     com_edge2D%rPE(n), MPI_COMM_FESOM, rreq(n), MPIerr)
+   end do
+
+   call MPI_WAITALL(sn, sreq, MPI_STATUSES_IGNORE, MPIerr)
+   call MPI_WAITALL(rn, rreq, MPI_STATUSES_IGNORE, MPIerr)
+
+   do n = 1, rn
+      nini = com_edge2D%rptr(n)
+      nend = com_edge2D%rptr(n+1)-1
+      edge_array2D(com_edge2D%rlist(nini:nend)) = r_buff(n)%array
+
+      deallocate(r_buff(n)%array)
+   end do
+
+end if
+
+
+end subroutine exchange_edge2D
+
 !=======================================
 ! AND WAITING
 !=======================================
@@ -2811,5 +2879,5 @@ end interface gather_edge
 private  ! hides items not listed on public statement
 public :: exchange_nod,exchange_elem,broadcast_nod,broadcast_elem, &
           gather_nod, gather_elem, exchange_nod_begin, exchange_nod_end, exchange_elem_begin, &
-          exchange_elem_end, gather_edge
+          exchange_elem_end, gather_edge, exchange_edge2D
 end module g_comm_auto
