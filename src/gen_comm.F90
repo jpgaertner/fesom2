@@ -643,8 +643,8 @@ subroutine communication_edgen(partit, mesh)
    !! ==========
    !! the number of PEs information is received from/ sent to
    !! ==========
-   rPEnum = count(num_send(0:npes-1) > 0)
-   sPEnum = count(num_recv(0:npes-1) > 0)
+   rPEnum = count(num_recv(0:npes-1) > 0)
+   sPEnum = count(num_send(0:npes-1) > 0)
 
    ! ==========
    ! the lists of PEs information is received from/ sent to
