@@ -884,7 +884,8 @@ end if
  endif
  read(fileID,*) com_edge2D%rPE(1:com_edge2D%rPEnum)
  read(fileID,*) com_edge2D%rptr(1:com_edge2D%rPEnum+1)
- allocate(com_edge2D%rlist(eDim_edge2D))
+ n = com_edge2D%rptr(com_edge2D%rPEnum+1) - 1
+ allocate(com_edge2D%rlist(n))
  read(fileID,*) com_edge2D%rlist
  read(fileID,*) com_edge2D%sPEnum
  if (com_edge2D%sPEnum > MAX_NEIGHBOR_PARTITIONS) then
@@ -893,7 +894,8 @@ end if
  endif
  read(fileID,*) com_edge2D%sPE(1:com_edge2D%sPEnum)
  read(fileID,*) com_edge2D%sptr(1:com_edge2D%sPEnum+1)
- allocate(com_edge2D%slist(com_edge2D%sptr(com_edge2D%sPEnum+1)-1))
+ n = com_edge2D%sptr(com_edge2D%sPEnum+1)-1
+ allocate(com_edge2D%slist(n))
  read(fileID,*) com_edge2D%slist
 
  close(fileID)
