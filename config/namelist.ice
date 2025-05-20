@@ -1,6 +1,6 @@
 ! Ice namelist
 &ice_dyn
-whichEVP=0             ! 0=standart; 1=mEVP; 2=aEVP
+whichEVP=1             ! 0=standart; 1=mEVP; 2=aEVP; 3=test_solver
 Pstar=30000.0          ! [N/m^2]
 ellipse=2.0
 c_pressure=20.0        ! ice concentration parameter used in ice strength computation
@@ -14,6 +14,8 @@ ice_gamma_fct=0.5      ! smoothing parameter
 ice_diff=0.0           ! diffusion to stabilize
 theta_io=0.0           ! rotation angle
 ice_ave_steps=1        ! ice step=ice_ave_steps*oce_step
+ice_vplace=1           ! 0 = node placement, 1 = edge placement
+nc_stab=2.5            ! stabilization factor for edge placement
 /
 
 &ice_therm
