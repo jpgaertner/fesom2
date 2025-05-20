@@ -1083,16 +1083,20 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             call exchange_nod_end(partit)
 !$OMP END MASTER
 !$OMP BARRIER
-!$OMP END PARALLEL
         else if (ice_vplace == 1) then
+!$OMP MASTER
             call exchange_edge2D(u_ice_aux, partit)
             call exchange_edge2D(v_ice_aux, partit)
-
+!$OMP END MASTER
+!$OMP BARRIER
+!$OMP DO
             do row=1, myDim_edge2D
                 u_rhs_ice(row)=0.0_WP
                 v_rhs_ice(row)=0.0_WP
             end do
+!$OMP END DO
         end if
+!$OMP END PARALLEL
     end do ! --> do shortstep=1, steps
 
 !$OMP PARALLEL DO
