@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=ref
+#SBATCH --job-name=fesom_nc
 #SBATCH -p compute
+#SBATCH --nodes=1
+#SBATCH --ntasks=128
 #SBATCH --ntasks-per-node=128
-#SBATCH --ntasks=512
-#SBATCH --time=08:00:00
-#SBATCH -o slurm-out.out
-#SBATCH -e slurm-err.out
-#SBATCH -A ab0995
+#SBATCH --time=0:05:00
+#SBATCH --output=output.txt
+#SBATCH -A bk1377
 
 source /sw/etc/profile.levante
 #source ../env/levante.dkrz.de/shell
