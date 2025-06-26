@@ -107,7 +107,7 @@ subroutine nc_stabilization(ice, partit, mesh)
     zeta_e    => ice%zeta_e(:)
 
     ! cycle 1: assemble differences
-    allocate(udif(edge2D), vdif(edge2D))
+    allocate(udif(myDim_edge2D+eDim_edge2D), vdif(myDim_edge2D+eDim_edge2D))
     udif = 0.0_WP
     vdif = 0.0_WP
 
