@@ -757,8 +757,10 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             ice_exists(i) = .false.
 
             ! if cavity edge skip it (before checking if the second element has a cavity node, check if it exists)
-            if ( (ulevels(edge_tri(1,i))>1) .or. &
-                ( edge_tri(2,i)>0 .and. ulevels(edge_tri(2,i))>1) ) cycle
+            if (ulevels(edge_tri(1,i))>1) cycle
+            if (edge_tri(2,i)>0) then
+                if (ulevels(edge_tri(2,i))>1) cycle
+            endif
 
             if (a_ice(edges(1,i)) >= 0.01_WP .and. a_ice(edges(2,i)) >= 0.01_WP) then
                 a_ice_ed = 0.5_WP * sum(a_ice(edges(:,i))) ! average the two adjacent nodes of the edge
@@ -969,8 +971,10 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             do i=1, myDim_edge2D
 
                 ! if cavity edge skip it (before checking if the second element has a cavity node, check if it exists)
-                if ( (ulevels(edge_tri(1,i))>1) .or. &
-                        ( edge_tri(2,i)>0 .and. ulevels(edge_tri(2,i))>1) ) cycle
+                if (ulevels(edge_tri(1,i))>1) cycle
+                if (edge_tri(2,i)>0) then
+                    if (ulevels(edge_tri(2,i))>1) cycle
+                endif
                 
                 if (ice_exists(i)) then
 
@@ -1056,13 +1060,18 @@ subroutine EVPdynamics_m(ice, partit, mesh)
                 !___________________________________________________________________
                 ! apply sea ice velocity boundary conditions at cavity-ocean edge
                 if (use_cavity) then
-                    if ( (ulevels(edge_tri(1,ed))>1) .or. &
-                        ( edge_tri(2,ed)>0 .and. ulevels(edge_tri(2,ed))>1) ) then
-
+                    if (ulevels(edge_tri(1,ed))>1) then
+                    
                         u_ice_aux(ed)=0.0_WP
                         v_ice_aux(ed)=0.0_WP
+                    else if (edge_tri(2,ed)>0) then
+                        if (ulevels(edge_tri(2,ed))>1) then
 
-                    end if
+                            u_ice_aux(ed)=0.0_WP
+                            v_ice_aux(ed)=0.0_WP
+                        endif
+                    endif
+
                 end if
             end do ! --> do ed=1,myDim_edge2D
         end if
