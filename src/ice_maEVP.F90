@@ -807,9 +807,10 @@ subroutine EVPdynamics_m(ice, partit, mesh)
             ice_el(el) = .true.
             asum=sum(a_ice(elnodes))*val3
             pressure_fac(el) = det2*ice%pstar*msum*exp(-ice%c_pressure*(1.0_WP-asum))
+            
+            zeta_e(eledges) = zeta_e(eledges) + 0.5_WP * ice%pstar * sum(m_ice(elnodes) * exp(-ice%c_pressure*(1.0_WP-a_ice(elnodes)))) * val3 * elem_area(el) / ice%ice_dt 
         endif
 
-        zeta_e(eledges) = zeta_e(eledges) + 0.5_WP * ice%pstar * sum(m_ice(elnodes) * exp(-ice%c_pressure*(1.0_WP-a_ice(elnodes)))) * val3 * elem_area(el) / ice%ice_dt 
     end do
     call exchange_edge2D(zeta_e, partit)
 
