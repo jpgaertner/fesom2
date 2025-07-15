@@ -97,6 +97,21 @@ END TYPE T_ICE_THERMO
 !
 !
 !_______________________________________________________________________________
+! set derived type to store the arrays needed for the cleaned up mEVP solver (on non-conforming elements)
+type t_ice_nc
+    !___________________________________________________________________________
+    real(kind=WP), allocatable, dimension(:)    :: ice_strength
+    real(kind=WP), allocatable, dimension(:)    :: zeta_e
+    real(kind=WP), allocatable, dimension(:)    :: inv_mass, inv_mass_a
+    real(kind=WP), allocatable, dimension(:)    :: gsshx, gsshy
+    real(kind=WP), allocatable, dimension(:)    :: rhs_u, rhs_v
+    real(kind=WP), allocatable, dimension(:)    :: R_u, R_v
+    logical, allocatable, dimension(:)          :: ice_exists
+    logical, allocatable, dimension(:)          :: ice_el
+end type t_ice_nc
+!
+!
+!_______________________________________________________________________________
 ! set work array derived type for ice
 #if defined (__oasis) || defined (__ifsinterface)
 TYPE T_ICE_ATMCOUPL
@@ -172,6 +187,9 @@ TYPE T_ICE
 
     ! put thermodynamics arrays
     type(t_ice_thermo)                          :: thermo
+
+    ! put arrays used in the mEVP solver (on non-conforming elements)
+    type(t_ice_nc)                              :: nc
 
 #if defined (__oasis) || defined (__ifsinterface)
     !___________________________________________________________________________
@@ -786,6 +804,34 @@ subroutine ice_init(ice, partit, mesh)
     ice%thermo%thdgr     = 0.0_WP
     ice%thermo%thdgrsn   = 0.0_WP
     ice%thermo%thdgr_old = 0.0_WP
+
+    !___________________________________________________________________________
+    ! initialse nc array of ice derived type
+    allocate(ice%nc%ice_strength(   elem_size))
+    allocate(ice%nc%zeta_e      (   edge_size))
+    allocate(ice%nc%inv_mass    (   edge_size))
+    allocate(ice%nc%inv_mass_a  (   edge_size))
+    allocate(ice%nc%gsshx       (   edge_size))
+    allocate(ice%nc%gsshy       (   edge_size))
+    allocate(ice%nc%rhs_u       (   edge_size))
+    allocate(ice%nc%rhs_v       (   edge_size))
+    allocate(ice%nc%ice_exists  (   edge_size))
+    allocate(ice%nc%ice_el      (   elem_size))
+    allocate(ice%nc%R_u         (   edge_size))
+    allocate(ice%nc%R_v         (   edge_size))
+
+    ice%nc%ice_strength = 0.0_WP
+    ice%nc%zeta_e       = 0.0_WP
+    ice%nc%inv_mass     = 0.0_WP
+    ice%nc%inv_mass_a   = 0.0_WP
+    ice%nc%gsshx        = 0.0_WP
+    ice%nc%gsshy        = 0.0_WP
+    ice%nc%rhs_u        = 0.0_WP
+    ice%nc%rhs_v        = 0.0_WP
+    ice%nc%ice_exists   = .false.
+    ice%nc%ice_el       = .false.
+    ice%nc%R_u          = 0.0_WP
+    ice%nc%R_v          = 0.0_WP
 
     !___________________________________________________________________________
     ! initialse coupling array of ice derived type
