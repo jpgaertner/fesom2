@@ -581,6 +581,22 @@ subroutine communication_edgen(partit, mesh)
    recv_from_pe(1:edge2D) = -1
    send_to_pe(1:MAX_LAENDERECK,1:edge2D) = -1
 
+
+    do elem = 1, elem2D
+        elnodes = elem2D_nodes(:,elem)
+        eledges = elem_edges(:,elem)
+
+        if (part(elnodes(3)) == mype) then
+            ! if other nodes are not in mype
+            if ((part(elnodes(1)) /= mype .and. part(elnodes(2)) /= mype) & 
+                ! but the nodes of the 'opposite' edge are
+                .and. (part(edges(1,eledges(3))) == mype .or. part(edges(2,eledges(3))) == mype)) then
+               print *, 'eledges(3) is not opposite of elnodes(3)'
+            end if
+         end if
+    end do
+
+
    do elem = 1, elem2D
       elnodes = elem2D_nodes(:,elem)
       eledges = elem_edges(:,elem)
