@@ -103,6 +103,7 @@ subroutine ice_timestep(step, ice, partit, mesh)
     use ice_test_solver
     use ice_EVPdynamics_interface
     use ice_maEVPdynamics_interface
+    use ice_mEVPdynamics_nc_interface
     use ice_fct_interfaces
     use ice_thermodynamics_interfaces
     use cavity_interfaces
@@ -209,6 +210,12 @@ subroutine ice_timestep(step, ice, partit, mesh)
     CASE (3)
         if (flag_debug .and. mype==0)  print *, achar(27)//'[36m'//'     --> call solve_test...'//achar(27)//'[0m'
         call solve_test(ice, partit, mesh)
+    CASE (4)
+        if (flag_debug .and. mype==0)  print *, achar(27)//'[36m'//'     --> call mEVPdynamics_nc...'//achar(27)//'[0m'
+        call mEVPdynamics_nc(ice, partit, mesh)
+    CASE (5)
+        if (flag_debug .and. mype==0)  print *, achar(27)//'[36m'//'     --> call mEVPdynamics_div_nc...'//achar(27)//'[0m'
+        call mEVPdynamics_div_nc(ice, partit, mesh)
     CASE DEFAULT
         if (mype==0) write(*,*) 'a non existing EVP scheme specified!'
         call par_ex(partit%MPI_COMM_FESOM, partit%mype)
