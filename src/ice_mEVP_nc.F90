@@ -643,6 +643,9 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     rhs_v = 0.0_WP
 
     do elem = 1, myDim_elem2D
+        ! if element has any cavity node skip it
+        if (ulevels(elem) > 1)  cycle
+
         eledges = elem_edges(:,elem)
         !call roll_array(eledges)
         
