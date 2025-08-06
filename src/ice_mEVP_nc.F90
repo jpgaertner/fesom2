@@ -621,6 +621,7 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     !___________________________________________________________________________
     real(kind=WP), dimension(:), pointer  :: rhs_u, rhs_v, u_ice_aux, v_ice_aux
     real(kind=WP), dimension(:), pointer  :: ice_strength
+    logical, dimension(:), pointer        :: ice_el
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -630,6 +631,7 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     u_ice_aux    => ice%uice_aux(:)
     v_ice_aux    => ice%vice_aux(:)
     ice_strength => ice%nc%ice_strength(:)
+    ice_el       => ice%nc%ice_el(:)
 
     val3 = 1.0_WP / 3.0_WP
     vale = 1.0_WP / (ice%ellipse**2)
@@ -667,9 +669,11 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
         si11 = 0.5_WP * pressure * (eps1 - delta + eps2 * vale)
         si22 = 0.5_WP * pressure * (eps1 - delta - eps2 * vale)
         si12 = pressure * eps12 * vale
-        
-        rhs_u(eledges) = rhs_u(eledges) - elem_area(elem) * (si11 * dx + si12 * dy + si12 * val3 * meancos)
-        rhs_v(eledges) = rhs_v(eledges) - elem_area(elem) * (si12 * dx + si22 * dy - si11 * val3 * meancos)
+
+        if (ice_el(elem)) then
+            rhs_u(eledges) = rhs_u(eledges) - elem_area(elem) * (si11 * dx + si12 * dy + si12 * val3 * meancos)
+            rhs_v(eledges) = rhs_v(eledges) - elem_area(elem) * (si12 * dx + si22 * dy - si11 * val3 * meancos)
+        end if
     end do
     call nc_stabilization_loc(ice, partit, mesh)
 
