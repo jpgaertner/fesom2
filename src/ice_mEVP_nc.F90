@@ -438,9 +438,9 @@ subroutine stress2rhs_nc(ice, partit, mesh)
             do k = 1, 3
                 row = eledges(k)
                 if (row < myDim_edge2D) then
-                    rhs_u(row) = rhs_u(row) - vol * (sigma11(elem) * dx(k) + sigma12(elem) * dy(k) + meancos * val3) &
+                    rhs_u(row) = rhs_u(row) - vol * (sigma11(elem) * dx(k) + sigma12(elem) * dy(k)) &
                                 - vol * sigma12(elem) * val3 * meancos     ! metrics
-                    rhs_v(row) = rhs_v(row) - vol * (sigma12(elem) * dx(k) + sigma22(elem) * dy(k) + meancos * val3) &
+                    rhs_v(row) = rhs_v(row) - vol * (sigma12(elem) * dx(k) + sigma22(elem) * dy(k)) &
                                 + vol * sigma11(elem) * val3 * meancos     ! metrics
                 end if
             end do
