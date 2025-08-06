@@ -442,7 +442,7 @@ subroutine stress2rhs_nc(ice, partit, mesh)
     end do
     call nc_stabilization_loc(ice, partit, mesh)
     do row = 1, myDim_edge2D
-        if (row > edge2D_in) cycle
+        if (myList_edge2D(row) > edge2D_in) cycle
         if (edge_tri(2,row)>0) then
             cluster_area = sum(elem_area(edge_tri(:,row))) * val3 
         else
@@ -518,7 +518,7 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
         call stress2rhs_nc(ice, partit, mesh)
 
         do i = 1, myDim_edge2D
-            if (i > edge2D_in) cycle
+            if (myList_edge2D(i) > edge2D_in) cycle
 
             ! if cavity edge skip it (before checking if the second element has a cavity node, check if it exists)
             if (ulevels(edge_tri(1,i))>1) cycle
@@ -733,6 +733,7 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
     u_ice_aux = u_ice
     v_ice_aux = v_ice
 
+
     call ice_strength_mass_nc(ice, partit, mesh)
     call ssh2rhs_nc(ice, partit, mesh)
 
@@ -740,7 +741,8 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
         call stress_tensor_div_nc(ice, partit, mesh)
 
         do i = 1, myDim_edge2D
-            if (i > edge2D_in) cycle
+
+            if (myList_edge2D(i) > edge2D_in) cycle
 
             ! if cavity edge skip it (before checking if the second element has a cavity node, check if it exists)
             if (ulevels(edge_tri(1,i))>1) cycle
