@@ -111,6 +111,7 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
     rhs_v     => ice%nc%rhs_v(:)
     zeta_e    => ice%nc%zeta_e(:)
 
+
     ! cycle 1: assemble differences
     allocate(udif(myDim_edge2D+eDim_edge2D), vdif(myDim_edge2D+eDim_edge2D))
     udif = 0.0_WP
@@ -190,6 +191,7 @@ subroutine ice_strength_mass_nc(ice, partit, mesh)
     ice_el       => ice%nc%ice_el
 
     val3 = 1.0_WP / 3.0_WP
+
 
     zeta_e = 0.0_WP
     do elem = 1, myDim_elem2D
@@ -283,8 +285,9 @@ subroutine stress_tensor_nc(ice, partit, mesh)
 
     val3 = 1.0_WP / 3.0_WP
     vale = 1.0_WP / (ice%ellipse**2)
-    det2=1.0_WP/(1.0_WP+ice%alpha_evp)
-    det1=ice%alpha_evp*det2
+    det2 = 1.0_WP / (1.0_WP + ice%alpha_evp)
+    det1 = ice%alpha_evp * det2
+
 
     do elem = 1, myDim_elem2D
         elnodes = elem2D_nodes(:,elem)
@@ -354,9 +357,11 @@ subroutine ssh2rhs_nc(ice, partit, mesh)
 
     val3 = 1.0_WP / 3.0_WP
 
+
     ! use gsshx, gsshy for storing the contribution from elevation
     gsshx = 0.0_WP
     gsshy = 0.0_WP
+
     do elem = 1, myDim_elem2D
         ! if element has any cavity node skip it
         if (ulevels(elem) > 1)  cycle
@@ -414,8 +419,9 @@ subroutine stress2rhs_nc(ice, partit, mesh)
 
     val3 = 1.0_WP / 3.0_WP
 
-    rhs_u = 0
-    rhs_v = 0
+
+    rhs_u = 0.0_WP
+    rhs_v = 0.0_WP
 
     do elem = 1, myDim_elem2D
         ! if element has any cavity node skip it
@@ -503,15 +509,17 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
     ice_exists      => ice%nc%ice_exists(:)
 
     steps = ice%evp_rheol_steps
-    rdt=ice%ice_dt
+    rdt = ice%ice_dt
+
+
     u_ice_aux = u_ice
     v_ice_aux = v_ice
 
-    call ice_strength_mass_nc(ice, partit, mesh)
-    call ssh2rhs_nc(ice, partit, mesh)
-
     rhs_u = 0.0_WP
     rhs_v = 0.0_WP
+
+    call ice_strength_mass_nc(ice, partit, mesh)
+    call ssh2rhs_nc(ice, partit, mesh)
 
     do shortsteps = 1, steps
         call stress_tensor_nc(ice, partit, mesh)
@@ -592,19 +600,6 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
 
 end subroutine mEVPdynamics_nc
 
-subroutine roll_array(arr)
-    USE MOD_PARTIT
-    implicit none
-    integer, intent(inout) :: arr(3)
-    integer                :: tmp(3)
-
-    tmp = arr
-    arr(1) = tmp(3)
-    arr(2) = tmp(1)
-    arr(3) = tmp(2)
-
-end subroutine
-
 subroutine stress_tensor_div_nc(ice, partit, mesh)
     USE MOD_ICE
     USE MOD_PARTIT
@@ -630,14 +625,15 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    rhs_u    => ice%nc%rhs_u(:)
-    rhs_v    => ice%nc%rhs_v(:)
-    u_ice_aux => ice%uice_aux(:)
-    v_ice_aux => ice%vice_aux(:)
+    rhs_u        => ice%nc%rhs_u(:)
+    rhs_v        => ice%nc%rhs_v(:)
+    u_ice_aux    => ice%uice_aux(:)
+    v_ice_aux    => ice%vice_aux(:)
     ice_strength => ice%nc%ice_strength(:)
 
     val3 = 1.0_WP / 3.0_WP
     vale = 1.0_WP / (ice%ellipse**2)
+
 
     rhs_u = 0.0_WP
     rhs_v = 0.0_WP
@@ -647,12 +643,10 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
         if (ulevels(elem) > 1)  cycle
 
         eledges = elem_edges(:,elem)
-        !call roll_array(eledges)
         
         dx = - 2.0_WP * gradient_sca(1:3,elem)
         dy = - 2.0_WP * gradient_sca(4:6,elem)
         
-
         vsum = sum(v_ice_aux(eledges))
         usum = sum(u_ice_aux(eledges))
         meancos = metric_factor(elem)
@@ -728,14 +722,15 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
     v_ice_nod       => ice%vice_nod(:)
     ice_exists      => ice%nc%ice_exists(:)
 
-    det2=1.0_WP/(1.0_WP+ice%alpha_evp)
-    det1=ice%alpha_evp*det2
+    det2 = 1.0_WP / (1.0_WP + ice%alpha_evp)
+    det1 = ice%alpha_evp * det2
     val3 = 1.0_WP / 3.0_WP
     steps = ice%evp_rheol_steps
-    rdt=ice%ice_dt
+    rdt = ice%ice_dt
+
+
     u_ice_aux = u_ice
     v_ice_aux = v_ice
-
 
     call ice_strength_mass_nc(ice, partit, mesh)
     call ssh2rhs_nc(ice, partit, mesh)
