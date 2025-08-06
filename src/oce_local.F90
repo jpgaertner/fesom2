@@ -214,7 +214,7 @@ SUBROUTINE save_dist_mesh(partit, mesh)
      q2 = merge(3,4,eledges(1) == eledges(4))
      DO q=1,q2
         if((part(edges(1,eledges(q))).ne.mype).and.(part(edges(2,eledges(q))).ne.mype) &
-             .and. all(myList_edge2D(myDim_edge2D:counter) /= eledges(q))) then
+             .and. all(myList_edge2D(myDim_edge2D+1:counter) /= eledges(q))) then
            counter=counter+1 
            myList_edge2D(counter)=eledges(q) 
         end if
@@ -226,12 +226,14 @@ SUBROUTINE save_dist_mesh(partit, mesh)
      stop
   endif
 
+  myList_edge2D(myDim_edge2D+1:myDim_edge2D+eDim_edge2D) = com_edge2D%rlist(1:eDim_edge2D)
+
   write(fileID,*) myDim_edge2D
   write(fileID,*) eDim_edge2D 	 
   write(fileID,*) myList_edge2D(1:myDim_edge2D +eDim_edge2D)
   ! deallocate(partit%myList_edge2D)
-  close(fileID)       
 
+  close(fileID)
 
   ! =========================  
   ! communication information
