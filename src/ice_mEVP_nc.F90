@@ -73,11 +73,6 @@ module ice_mEVP_nc_interfaces
         type(t_partit), intent(inout), target :: partit
         type(t_mesh)  , intent(in)   , target :: mesh
         end subroutine
-
-        subroutine roll_array(arr)
-        USE MOD_PARTIT
-        integer, intent(inout) :: arr(3)
-        end subroutine
    end interface
 end module
 
