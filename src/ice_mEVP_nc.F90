@@ -86,7 +86,7 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
     use o_param
     use g_config
     use o_arrays
-    use g_comm_auto
+    use g_comm
     implicit none
     type(t_ice),    intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
@@ -468,7 +468,6 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
     USE MOD_PARSUP
     USE MOD_MESH
     use g_comm
-    use ice_mEVP_nc_interfaces
     implicit none
     type(t_ice)   , intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
