@@ -15,83 +15,62 @@ contains
     type(t_ice)   , intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
     type(t_mesh)  , intent(in), target :: mesh
-
-    integer :: i, nod, edge
-    ! pointer on necessary derived types
+    !___________________________________________________________________________
     real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, u_ice_nod, v_ice_nod
-    real(kind=WP), dimension(:), pointer  :: stress_atmice_x, stress_atmice_y
-    real(kind=WP), dimension(:), pointer  :: u_w, v_w
-    integer, pointer :: ice_vplace
+    integer       :: i, i1, i2
+    real(kind=WP) :: expected_u, expected_v, diff_u, diff_v
+    real(kind=WP) :: x1, x2, y1, y2, x_edge, y_edge
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-
-    ice_vplace => ice%ice_vplace  
     u_ice => ice%uice(:)
     v_ice => ice%vice(:)
     u_ice_nod => ice%uice_nod(:)
     v_ice_nod => ice%vice_nod(:)
-    stress_atmice_x => ice%stress_atmice_x(:)
-    stress_atmice_y => ice%stress_atmice_y(:)
-    u_w => ice%srfoce_u(:)
-    v_w => ice%srfoce_v(:)
 
 
-    u_ice = 0.0_WP
-    v_ice = 0.0_WP
+    do i = 1, myDim_edge2D
+        i1 = edges(1, i)
+        i2 = edges(2, i)
+    
+        x1 = coord_nod2D(1, i1)
+        y1 = coord_nod2D(2, i1)
+        x2 = coord_nod2D(1, i2)
+        y2 = coord_nod2D(2, i2)
+    
+        x_edge = 0.5_wp * (x1 + x2)
+        y_edge = 0.5_wp * (y1 + y2)
+    
+        u_ice(i) = sin(x_edge) + cos(y_edge)
+        v_ice(i) = sin(x_edge) - cos(y_edge)
+    end do
 
-    ! test if the exchange routines work
-    if (ice_vplace == 0) then
-      do i = 1, myDim_nod2D
-        u_ice(i) = 1.0_WP
-        v_ice(i) = 1.0_WP
-      end do
+    !call exchange_edge2D(u_ice, partit)
+    !call exchange_edge2D(v_ice, partit)
 
-      print *, 'u_ice nodes = ', int(u_ice(1)), int(u_ice(myDim_nod2D)), int(u_ice(myDim_nod2D+1)), int(u_ice(myDim_nod2D+eDim_nod2D))
-      call exchange_nod(u_ice, partit)
-      print *, 'u_ice nodes = ', int(u_ice(1)), int(u_ice(myDim_nod2D)), int(u_ice(myDim_nod2D+1)), int(u_ice(myDim_nod2D+eDim_nod2D))
+    do i = myDim_edge2D+1, myDim_edge2D+eDim_edge2D
+        i1 = edges(1, i)
+        i2 = edges(2, i)
 
-    else if (ice_vplace == 1) then
-      do i = 1, myDim_edge2D
-        u_ice(i) = 1.0_WP
-        v_ice(i) = 1.0_WP
-      end do
+        x1 = coord_nod2D(1, i1)
+        y1 = coord_nod2D(2, i1)
+        x2 = coord_nod2D(1, i2)
+        y2 = coord_nod2D(2, i2)
 
-      print *, 'u_ice edges = ', int(u_ice(1)), int(u_ice(myDim_edge2D)), int(u_ice(myDim_edge2D+1)), int(u_ice(myDim_edge2D+eDim_edge2D))
-      call exchange_edge2D(u_ice, partit)
-      print *, 'u_ice edges = ', int(u_ice(1)), int(u_ice(myDim_edge2D)), int(u_ice(myDim_edge2D+1)), int(u_ice(myDim_edge2D+eDim_edge2D))
-    end if
+        x_edge = 0.5_wp * (x1 + x2)
+        y_edge = 0.5_wp * (y1 + y2)
+    
+        expected_u = sin(x_edge) + cos(y_edge)
+        expected_v = sin(x_edge) - cos(y_edge)
 
+        diff_u = abs(u_ice(i) - expected_u)
+        diff_v = abs(v_ice(i) - expected_v)
 
-    ! interpolate velocities from edges to nodes if necessary
-    if (ice_vplace == 0) then
-      u_ice_nod = u_ice
-      v_ice_nod = v_ice
-    else if (ice_vplace == 1) then
-      u_ice_nod = 0
-      v_ice_nod = 0
-
-      do edge = 1, myDim_edge2D
-        ! sum the adjacent edge velocities at the nodes
-        u_ice_nod(edges(1,edge)) = u_ice_nod(edges(1,edge)) + u_ice(edge)
-        u_ice_nod(edges(2,edge)) = u_ice_nod(edges(2,edge)) + u_ice(edge)
-        v_ice_nod(edges(1,edge)) = v_ice_nod(edges(1,edge)) + v_ice(edge)
-        v_ice_nod(edges(2,edge)) = v_ice_nod(edges(2,edge)) + v_ice(edge)
-      end do
-
-      do nod = 1, myDim_nod2D
-        ! and divide by the number of adjacent edges
-        u_ice_nod(nod) = u_ice_nod(nod) / mesh%nn_num(nod)
-        v_ice_nod(nod) = v_ice_nod(nod) / mesh%nn_num(nod)
-      end do
-
-    end if
-
-    !print *, 'myDim_nod2D = ', myDim_nod2D
-    !print *, 'myDim_edge2D = ', myDim_edge2D
-    !print *, 'myDim_elem2D = ', myDim_elem2D
-
+        if (diff_u > 1e-10_WP .or. diff_v > 1e-10_WP) then
+            print *, 'Halo mismatch at edge', i, diff_u, diff_v
+        end if
+    end do
 
   end subroutine solve_test
 
