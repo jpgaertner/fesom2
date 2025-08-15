@@ -16,7 +16,7 @@ contains
     type(t_partit), intent(inout), target :: partit
     type(t_mesh)  , intent(in), target :: mesh
     !___________________________________________________________________________
-    real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, u_ice_nod, v_ice_nod
+    real(kind=WP), dimension(:), pointer  :: u_ice, v_ice
     integer       :: i, i1, i2
     real(kind=WP) :: expected_u, expected_v, diff_u, diff_v
     real(kind=WP) :: x1, x2, y1, y2, x_edge, y_edge
@@ -26,9 +26,10 @@ contains
 #include "associate_mesh_ass.h"
     u_ice => ice%uice(:)
     v_ice => ice%vice(:)
-    u_ice_nod => ice%uice_nod(:)
-    v_ice_nod => ice%vice_nod(:)
+    
 
+    u_ice = 0.0_WP
+    v_ice = 0.0_WP
 
     do i = 1, myDim_edge2D
         i1 = edges(1, i)
