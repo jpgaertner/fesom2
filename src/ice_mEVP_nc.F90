@@ -86,7 +86,7 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
     use o_param
     use g_config
     use o_arrays
-    use g_comm
+    use g_comm_auto
     implicit none
     type(t_ice),    intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
@@ -155,7 +155,7 @@ subroutine ice_strength_mass_nc(ice, partit, mesh)
     USE MOD_PARTIT
     USE MOD_PARSUP
     USE MOD_MESH
-    use g_comm
+    use g_comm_auto
     implicit none
     type(t_ice)   , intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
@@ -468,7 +468,7 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
     USE MOD_PARTIT
     USE MOD_PARSUP
     USE MOD_MESH
-    use g_comm
+    use g_comm_auto
     implicit none
     type(t_ice)   , intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
@@ -592,6 +592,9 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
         v_ice_nod(i) = v_ice_nod(i) / mesh%nn_num(i)
     end do
 
+    call exchange_nod(u_ice_nod, partit)
+    call exchange_nod(v_ice_nod, partit)
+
 end subroutine mEVPdynamics_nc
 
 subroutine stress_tensor_div_nc(ice, partit, mesh)
@@ -599,7 +602,7 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     USE MOD_PARTIT
     USE MOD_PARSUP
     USE MOD_MESH
-    use g_comm
+    use g_comm_auto
     use mod_nc_stabilization_loc
     use ice_mEVP_nc_interfaces
     implicit none
@@ -678,7 +681,7 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
     USE MOD_PARTIT
     USE MOD_PARSUP
     USE MOD_MESH
-    use g_comm
+    use g_comm_auto
     use ice_mEVP_nc_interfaces
     implicit none
     type(t_ice)   , intent(inout), target :: ice
@@ -801,7 +804,6 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
 
 
     ! interpolate velocities from edges to nodes
-    ! (only used for writing the output file)
     u_ice_nod = 0.0_WP
     v_ice_nod = 0.0_WP
 
@@ -818,5 +820,8 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
         u_ice_nod(i) = u_ice_nod(i) / mesh%nn_num(i)
         v_ice_nod(i) = v_ice_nod(i) / mesh%nn_num(i)
     end do
+
+    call exchange_nod(u_ice_nod, partit)
+    call exchange_nod(v_ice_nod, partit)
 
 end subroutine mEVPdynamics_div_nc
