@@ -786,14 +786,6 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
             end if
         end do
 
-        do i=1,myDim_edge2D
-            ! apply coastal sea ice velocity boundary conditions
-            if (myList_edge2D(i) > edge2D_in) then
-                u_ice_aux(i)=0.0_WP
-                v_ice_aux(i)=0.0_WP
-            end if
-        end do
-
         call exchange_edge2D(u_ice_aux, partit)
         call exchange_edge2D(v_ice_aux, partit)
 
