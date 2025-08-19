@@ -95,16 +95,17 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
     integer                               :: el, eledges(3)
     real(kind=WP)                         :: uu(3), vv(3), cx(3)
     real(kind=WP), allocatable            :: udif(:), vdif(:)
-    real(kind=WP), dimension(:), pointer  :: u_ice_aux, v_ice_aux, rhs_u, rhs_v, zeta_e
+    real(kind=WP), contiguous, dimension(:), pointer  :: u_ice_aux, v_ice_aux, rhs_u, rhs_v
+    real(kind=WP), contiguous, dimension(:), pointer  :: zeta_e
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    u_ice_aux => ice%uice_aux(:)
-    v_ice_aux => ice%vice_aux(:)
-    rhs_u     => ice%nc%rhs_u(:)
-    rhs_v     => ice%nc%rhs_v(:)
-    zeta_e    => ice%nc%zeta_e(:)
+    u_ice_aux => ice%uice_aux
+    v_ice_aux => ice%vice_aux
+    rhs_u     => ice%nc%rhs_u
+    rhs_v     => ice%nc%rhs_v
+    zeta_e    => ice%nc%zeta_e
 
 
     ! cycle 1: assemble differences
@@ -163,21 +164,21 @@ subroutine ice_strength_mass_nc(ice, partit, mesh)
     integer       :: elem, ed, elnodes(3), eledges(3)
     real(kind=WP) :: mmass, val3, msum, a_ice_ed, cluster_area, asum
     !___________________________________________________________________________
-    real(kind=WP), dimension(:), pointer  :: ice_strength
-    real(kind=WP), dimension(:), pointer  :: zeta_e
-    real(kind=WP), dimension(:), pointer  :: a_ice, m_ice, m_snow
-    real(kind=WP), dimension(:), pointer  :: inv_mass, inv_mass_a
+    real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength
+    real(kind=WP), contiguous, dimension(:), pointer  :: zeta_e
+    real(kind=WP), contiguous, dimension(:), pointer  :: a_ice, m_ice, m_snow
+    real(kind=WP), contiguous, dimension(:), pointer  :: inv_mass, inv_mass_a
     real(kind=WP), pointer  :: rhoice, rhosno
-    logical, dimension(:), pointer        :: ice_exists, ice_el
+    logical, contiguous, dimension(:), pointer        :: ice_exists, ice_el
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    ice_strength => ice%nc%ice_strength(:)
-    zeta_e       => ice%nc%zeta_e(:)
-    a_ice        => ice%data(1)%values(:)
-    m_ice        => ice%data(2)%values(:)
-    m_snow       => ice%data(3)%values(:)
+    ice_strength => ice%nc%ice_strength
+    zeta_e       => ice%nc%zeta_e
+    a_ice        => ice%data(1)%values
+    m_ice        => ice%data(2)%values
+    m_snow       => ice%data(3)%values
     rhoice       => ice%thermo%rhoice
     rhosno       => ice%thermo%rhosno
     inv_mass     => ice%nc%inv_mass
@@ -264,19 +265,19 @@ subroutine stress_tensor_nc(ice, partit, mesh)
     real(kind=WP) :: eps11, eps12, eps22, eps1, eps2, delta, pressure
     real(kind=WP) :: r1, r2, r3, si1, si2
     !___________________________________________________________________________
-    real(kind=WP), dimension(:), pointer  :: u_ice_aux, v_ice_aux
-    real(kind=WP), dimension(:), pointer  :: ice_strength
-    real(kind=WP), dimension(:), pointer  :: sigma11, sigma12, sigma22
+    real(kind=WP), contiguous, dimension(:), pointer  :: u_ice_aux, v_ice_aux
+    real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength
+    real(kind=WP), contiguous, dimension(:), pointer  :: sigma11, sigma12, sigma22
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    u_ice_aux    => ice%uice_aux(:)
-    v_ice_aux    => ice%vice_aux(:)
-    ice_strength => ice%nc%ice_strength(:)
-    sigma11      => ice%work%sigma11(:)
-    sigma12      => ice%work%sigma12(:)
-    sigma22      => ice%work%sigma22(:)
+    u_ice_aux    => ice%uice_aux
+    v_ice_aux    => ice%vice_aux
+    ice_strength => ice%nc%ice_strength
+    sigma11      => ice%work%sigma11
+    sigma12      => ice%work%sigma12
+    sigma22      => ice%work%sigma22
 
     val3 = 1.0_WP / 3.0_WP
     vale = 1.0_WP / (ice%ellipse**2)
@@ -340,15 +341,15 @@ subroutine ssh2rhs_nc(ice, partit, mesh)
     real(kind=WP) :: dx(3), dy(3), vol
     real(kind=WP) :: val3, aa, bb
     !___________________________________________________________________________
-    real(kind=WP), dimension(:), pointer  :: gsshx, gsshy
-    real(kind=WP), dimension(:), pointer  :: elevation
+    real(kind=WP), contiguous, dimension(:), pointer  :: gsshx, gsshy
+    real(kind=WP), contiguous, dimension(:), pointer  :: elevation
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    gsshx     => ice%nc%gsshx(:)
-    gsshy     => ice%nc%gsshy(:)
-    elevation => ice%srfoce_ssh(:)
+    gsshx     => ice%nc%gsshx
+    gsshy     => ice%nc%gsshy
+    elevation => ice%srfoce_ssh
 
     val3 = 1.0_WP / 3.0_WP
 
@@ -394,23 +395,23 @@ subroutine stress2rhs_nc(ice, partit, mesh)
     real(kind=WP) :: val3, vol, cluster_area, meancos
     real(kind=WP) :: dx(3), dy(3)
     !___________________________________________________________________________
-    real(kind=WP), dimension(:), pointer  :: rhs_u, rhs_v
-    real(kind=WP), dimension(:), pointer  :: sigma11, sigma12, sigma22
-    real(kind=WP), dimension(:), pointer  :: gsshx, gsshy, inv_mass
-    logical, dimension(:), pointer        :: ice_el
+    real(kind=WP), contiguous, dimension(:), pointer  :: rhs_u, rhs_v
+    real(kind=WP), contiguous, dimension(:), pointer  :: sigma11, sigma12, sigma22
+    real(kind=WP), contiguous, dimension(:), pointer  :: gsshx, gsshy, inv_mass
+    logical, contiguous, dimension(:), pointer        :: ice_el
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    rhs_u    => ice%nc%rhs_u(:)
-    rhs_v    => ice%nc%rhs_v(:)
-    sigma11  => ice%work%sigma11(:)
-    sigma12  => ice%work%sigma12(:)
-    sigma22  => ice%work%sigma22(:)
-    gsshx    => ice%nc%gsshx(:)
-    gsshy    => ice%nc%gsshy(:)
-    inv_mass => ice%nc%inv_mass(:)
-    ice_el   => ice%nc%ice_el(:)
+    rhs_u    => ice%nc%rhs_u
+    rhs_v    => ice%nc%rhs_v
+    sigma11  => ice%work%sigma11
+    sigma12  => ice%work%sigma12
+    sigma22  => ice%work%sigma22
+    gsshx    => ice%nc%gsshx
+    gsshy    => ice%nc%gsshy
+    inv_mass => ice%nc%inv_mass
+    ice_el   => ice%nc%ice_el
 
     val3 = 1.0_WP / 3.0_WP
 
@@ -477,30 +478,29 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
     real(kind=WP) :: rdt, drag, det, fc
     real(kind=WP) :: uw, vw, umod, stx, sty, rhsu, rhsv
     !___________________________________________________________________________
-    real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, u_ice_aux, v_ice_aux, rhs_u, rhs_v
-    real(kind=WP), dimension(:), pointer  :: u_w, v_w
-    real(kind=WP), dimension(:), pointer  :: stress_atmice_x, stress_atmice_y
-    real(kind=WP), dimension(:), pointer  :: inv_mass_a
-    real(kind=WP), dimension(:), pointer  :: u_ice_nod, v_ice_nod
-    logical, dimension(:), pointer        :: ice_exists
+    real(kind=WP), contiguous, dimension(:), pointer  :: u_ice, v_ice, u_ice_aux, v_ice_aux, rhs_u, rhs_v
+    real(kind=WP), contiguous, dimension(:), pointer  :: inv_mass_a
+    real(kind=WP), contiguous, dimension(:), pointer  :: u_ice_nod, v_ice_nod
+    real(kind=WP), contiguous, dimension(:), pointer  :: u_w, v_w, stress_atmice_x, stress_atmice_y
+    logical, contiguous, dimension(:), pointer        :: ice_exists
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    u_ice           => ice%uice(:)
-    v_ice           => ice%vice(:)
-    u_ice_aux       => ice%uice_aux(:)
-    v_ice_aux       => ice%vice_aux(:)
-    rhs_u           => ice%nc%rhs_u(:)
-    rhs_v           => ice%nc%rhs_v(:)
-    u_w             => ice%srfoce_u(:)
-    v_w             => ice%srfoce_v(:)
-    stress_atmice_x => ice%stress_atmice_x(:)
-    stress_atmice_y => ice%stress_atmice_y(:)
-    inv_mass_a      => ice%nc%inv_mass_a(:)
-    u_ice_nod       => ice%uice_nod(:)
-    v_ice_nod       => ice%vice_nod(:)
-    ice_exists      => ice%nc%ice_exists(:)
+    u_ice           => ice%uice
+    v_ice           => ice%vice
+    u_ice_aux       => ice%uice_aux
+    v_ice_aux       => ice%vice_aux
+    rhs_u           => ice%nc%rhs_u
+    rhs_v           => ice%nc%rhs_v
+    u_w             => ice%srfoce_u
+    v_w             => ice%srfoce_v
+    stress_atmice_x => ice%stress_atmice_x
+    stress_atmice_y => ice%stress_atmice_y
+    inv_mass_a      => ice%nc%inv_mass_a
+    u_ice_nod       => ice%uice_nod
+    v_ice_nod       => ice%vice_nod
+    ice_exists      => ice%nc%ice_exists
 
     steps = ice%evp_rheol_steps
     rdt = ice%ice_dt
@@ -613,19 +613,19 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     real(kind=WP) :: eps11, eps22, eps12, eps1, eps2, delta, pressure
     real(kind=WP) :: si11, si22, si12
     !___________________________________________________________________________
-    real(kind=WP), dimension(:), pointer  :: rhs_u, rhs_v, u_ice_aux, v_ice_aux
-    real(kind=WP), dimension(:), pointer  :: ice_strength
-    logical, dimension(:), pointer        :: ice_el
+    real(kind=WP), contiguous, dimension(:), pointer  :: rhs_u, rhs_v, u_ice_aux, v_ice_aux
+    real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength
+    logical, contiguous, dimension(:), pointer        :: ice_el
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    rhs_u        => ice%nc%rhs_u(:)
-    rhs_v        => ice%nc%rhs_v(:)
-    u_ice_aux    => ice%uice_aux(:)
-    v_ice_aux    => ice%vice_aux(:)
-    ice_strength => ice%nc%ice_strength(:)
-    ice_el       => ice%nc%ice_el(:)
+    rhs_u        => ice%nc%rhs_u
+    rhs_v        => ice%nc%rhs_v
+    u_ice_aux    => ice%uice_aux
+    v_ice_aux    => ice%vice_aux
+    ice_strength => ice%nc%ice_strength
+    ice_el       => ice%nc%ice_el
 
     val3 = 1.0_WP / 3.0_WP
     vale = 1.0_WP / (ice%ellipse**2)
@@ -690,35 +690,35 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
     real(kind=WP) :: rdt, drag, det, fc
     real(kind=WP) :: uw, vw, umod, stx, sty, rhsu, rhsv
     !___________________________________________________________________________
-    real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, u_ice_aux, v_ice_aux
-    real(kind=WP), dimension(:), pointer  :: u_w, v_w, stress_atmice_x, stress_atmice_y
-    real(kind=WP), dimension(:), pointer  :: rhs_u, rhs_v, R_u, R_v, gsshx, gsshy
-    real(kind=WP), dimension(:), pointer  :: inv_mass, inv_mass_a
-    real(kind=WP), dimension(:), pointer  :: u_ice_nod, v_ice_nod
-    logical, dimension(:), pointer        :: ice_exists
+    real(kind=WP), contiguous, dimension(:), pointer  :: u_ice, v_ice, u_ice_aux, v_ice_aux
+    real(kind=WP), contiguous, dimension(:), pointer  :: rhs_u, rhs_v, R_u, R_v, gsshx, gsshy
+    real(kind=WP), contiguous, dimension(:), pointer  :: inv_mass, inv_mass_a
+    real(kind=WP), contiguous, dimension(:), pointer  :: u_ice_nod, v_ice_nod
+    real(kind=WP), contiguous, dimension(:), pointer  :: u_w, v_w, stress_atmice_x, stress_atmice_y
+    logical, contiguous, dimension(:), pointer        :: ice_exists
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    u_ice           => ice%uice(:)
-    v_ice           => ice%vice(:)
-    u_ice_aux       => ice%uice_aux(:)
-    v_ice_aux       => ice%vice_aux(:)
-    rhs_u           => ice%nc%rhs_u(:)
-    rhs_v           => ice%nc%rhs_v(:)
-    R_u             => ice%nc%R_u(:)
-    R_v             => ice%nc%R_v(:)
-    gsshx           => ice%nc%gsshx(:)
-    gsshy           => ice%nc%gsshy(:)
-    u_w             => ice%srfoce_u(:)
-    v_w             => ice%srfoce_v(:)
-    stress_atmice_x => ice%stress_atmice_x(:)
-    stress_atmice_y => ice%stress_atmice_y(:)
-    inv_mass        => ice%nc%inv_mass(:)
-    inv_mass_a      => ice%nc%inv_mass_a(:)
-    u_ice_nod       => ice%uice_nod(:)
-    v_ice_nod       => ice%vice_nod(:)
-    ice_exists      => ice%nc%ice_exists(:)
+    u_ice           => ice%uice
+    v_ice           => ice%vice
+    u_ice_aux       => ice%uice_aux
+    v_ice_aux       => ice%vice_aux
+    rhs_u           => ice%nc%rhs_u
+    rhs_v           => ice%nc%rhs_v
+    R_u             => ice%nc%R_u
+    R_v             => ice%nc%R_v
+    gsshx           => ice%nc%gsshx
+    gsshy           => ice%nc%gsshy
+    u_w             => ice%srfoce_u
+    v_w             => ice%srfoce_v
+    stress_atmice_x => ice%stress_atmice_x
+    stress_atmice_y => ice%stress_atmice_y
+    inv_mass        => ice%nc%inv_mass
+    inv_mass_a      => ice%nc%inv_mass_a
+    u_ice_nod       => ice%uice_nod
+    v_ice_nod       => ice%vice_nod
+    ice_exists      => ice%nc%ice_exists
 
     det2 = 1.0_WP / (1.0_WP + ice%alpha_evp)
     det1 = ice%alpha_evp * det2
