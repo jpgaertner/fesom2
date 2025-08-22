@@ -221,7 +221,6 @@ TYPE T_ICE
     integer                   :: whichEVP=0                ! 0=standart; 1=mEVP; 2=aEVP; 3=test_solver
     integer                   :: ice_vplace = 0            ! 0 = node placement, 1 = edge placement
     real(kind=WP)             :: nc_stab = 2.5_WP          ! stabilization parameter for edge placement of velocity
-    real(kind=WP)             :: elem_area_const = 4000000 ! constant element area, used in nc stabilization
 
     real(kind=WP)             :: ice_dt                    ! ice step=ice_ave_steps*oce_step
     real(kind=WP)             :: Tevp_inv
@@ -582,10 +581,10 @@ subroutine ice_init(ice, partit, mesh)
     ! define ice namelist parameter
     integer        :: whichEVP, evp_rheol_steps, ice_ave_steps, ice_vplace
     real(kind=WP)  :: Pstar, ellipse, c_pressure, delta_min, ice_gamma_fct, &
-                      ice_diff, theta_io, alpha_evp, beta_evp, c_aevp, Cd_oce_ice, nc_stab, elem_area_const
+                      ice_diff, theta_io, alpha_evp, beta_evp, c_aevp, Cd_oce_ice, nc_stab
     namelist /ice_dyn/ whichEVP, Pstar, ellipse, c_pressure, delta_min, evp_rheol_steps, &
                        Cd_oce_ice, ice_gamma_fct, ice_diff, theta_io, ice_ave_steps, &
-                       alpha_evp, beta_evp, c_aevp, ice_vplace, nc_stab, elem_area_const
+                       alpha_evp, beta_evp, c_aevp, ice_vplace, nc_stab
     logical        :: snowdist, new_iclasses
     integer        :: open_water_albedo, iclasses
     real(kind=WP)  :: Sice, h0, h0_s, emiss_ice, emiss_wat, albsn, albsnm, albi, &
@@ -631,7 +630,6 @@ subroutine ice_init(ice, partit, mesh)
     ice%c_aevp          = c_aevp
     ice%ice_vplace      = ice_vplace
     ice%nc_stab         = nc_stab
-    ice%elem_area_const = elem_area_const
 
     ! set parameters in ice derived type from namelist.ice --> namelist /ice_therm/
     ice%thermo%con      = con

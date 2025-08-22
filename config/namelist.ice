@@ -16,7 +16,6 @@ theta_io=0.0           ! rotation angle
 ice_ave_steps=1        ! ice step=ice_ave_steps*oce_step
 ice_vplace=0           ! 0 = node placement, 1 = edge placement
 nc_stab=2.5            ! stabilization factor for edge placement
-elem_area_const=5000000 ! constant element area, can be used in nc stabilization
 /
 
 &ice_therm
