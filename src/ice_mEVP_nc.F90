@@ -605,19 +605,20 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     use g_comm_auto
     use mod_nc_stabilization_loc
     use ice_mEVP_nc_interfaces
+    use elem_center_interface
     implicit none
     type(t_ice)   , intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(in)   , target :: mesh
+    type(t_mesh)  , intent(inout)   , target :: mesh
     !___________________________________________________________________________
     integer :: elem, eledges(3)
-    real(kind=WP) :: val3, vale, meancos
-    real(kind=WP) :: dx(3), dy(3), vsum, usum
-    real(kind=WP) :: eps11, eps22, eps12, eps1, eps2, delta, pressure
-    real(kind=WP) :: si11, si22, si12
+    real(kind=WP) :: val3, vale
+    real(kind=WP) :: dx(3), dy(3), usum, vsum
+    real(kind=WP) :: eps11, eps22, eps12, eps1, eps2, pressure, si11, si22, si12
+    real(kind=WP) :: x, y, meancos
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: rhs_u, rhs_v, u_ice_aux, v_ice_aux
-    real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength
+    real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength, delta
     logical, contiguous, dimension(:), pointer        :: ice_el
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
@@ -629,6 +630,7 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     v_ice_aux    => ice%vice_aux
     ice_strength => ice%nc%ice_strength
     ice_el       => ice%nc%ice_el
+    delta        => ice%nc%delta
 
     val3 = 1.0_WP / 3.0_WP
     vale = 1.0_WP / (ice%ellipse**2)
@@ -636,6 +638,7 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
 
     rhs_u = 0.0_WP
     rhs_v = 0.0_WP
+
 
     do elem = 1, myDim_elem2D
         ! if element has any cavity node skip it
@@ -646,10 +649,13 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
         dx = - 2.0_WP * gradient_sca(1:3,elem)
         dy = - 2.0_WP * gradient_sca(4:6,elem)
         
-        vsum = sum(v_ice_aux(eledges))
         usum = sum(u_ice_aux(eledges))
-        meancos = metric_factor(elem)
-        
+        vsum = sum(v_ice_aux(eledges))
+
+        !meancos = metric_factor(elem)
+        call elem_center(elem, x, y, mesh)
+        meancos = sin(y) / cos(y) / r_earth
+
         eps11 = sum(dx * u_ice_aux(eledges))
         eps11 = eps11 - val3 * vsum * meancos               ! metrics
         eps22 = sum(dy * v_ice_aux(eledges))
@@ -659,12 +665,13 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
         eps1 = eps11 + eps22
         eps2 = eps11 - eps22
 
-        delta = eps1**2 + vale * (eps2**2 + 4.0_WP * eps12**2)
-        delta = sqrt(delta)
-        pressure = ice_strength(elem) / (delta + ice%delta_min)
+        delta(elem) = eps1**2 + vale * (eps2**2 + 4.0_WP * eps12**2)
+        delta(elem) = sqrt(delta(elem))
 
-        si11 = 0.5_WP * pressure * (eps1 - delta + eps2 * vale)
-        si22 = 0.5_WP * pressure * (eps1 - delta - eps2 * vale)
+        pressure = ice_strength(elem) / (delta(elem) + ice%delta_min)
+
+        si11 = 0.5_WP * pressure * (eps1 - delta(elem) + eps2 * vale)
+        si22 = 0.5_WP * pressure * (eps1 - delta(elem) - eps2 * vale)
         si12 = pressure * eps12 * vale
 
         if (ice_el(elem)) then
@@ -672,6 +679,7 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
             rhs_v(eledges) = rhs_v(eledges) - elem_area(elem) * (si12 * dx + si22 * dy - si11 * val3 * meancos)
         end if
     end do
+
     call nc_stabilization_loc(ice, partit, mesh)
 
 end subroutine stress_tensor_div_nc
