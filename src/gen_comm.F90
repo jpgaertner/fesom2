@@ -595,7 +595,8 @@ subroutine communication_edgen(partit, mesh)
             if (part(edges(1,eledges(k_ed))) /= mype .and. part(edges(2,eledges(k_ed))) /= mype) then
                ! check if the edge is still not collected
                if (recv_from_pe(eledges(k_ed)) == -1) then
-                  np = part(edges(1,eledges(k_ed))) ! PE of the first node of the edge
+                  ! smallest PE that owns a node of the edge
+                  np = min(part(edges(1,eledges(k_ed))), part(edges(2,eledges(k_ed))))
                   num_recv(np) = num_recv(np) + 1   ! = 1 if an edge is received from PE np
                   recv_from_pe(eledges(k_ed)) = np  ! PE from which the edge is received
                end if
@@ -613,8 +614,8 @@ subroutine communication_edgen(partit, mesh)
             ! check if eledges(k_ed) is in np
             if (part(edges(1,eledges(k_ed))) == np .or. part(edges(2,eledges(k_ed))) == np) cycle
             ! check if eledges(k_ed) is in mype
-            ! only check for edges(1,...) so that the edge is not send from two PEs
-            if (part(edges(1,eledges(k_ed))) == mype) then
+            ! use smallest PE that owns a node of the edge so that the edge is not send from two PEs
+            if (mype == min(part(edges(1,eledges(k_ed))), part(edges(2,eledges(k_ed))))) then
                do l = 1, MAX_LAENDERECK
                   ! check if the edge is already collected
                   if (send_to_pe(l,eledges(k_ed)) == np) then
