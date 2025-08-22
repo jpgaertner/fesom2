@@ -108,6 +108,7 @@ type t_ice_nc
     real(kind=WP), allocatable, dimension(:)    :: R_u, R_v
     real(kind=WP), allocatable, dimension(:)    :: u_buff, v_buff
     real(kind=WP), allocatable, dimension(:)    :: delta
+    real(kind=WP), allocatable, dimension(:)    :: u_diff, v_diff
     logical, allocatable, dimension(:)          :: ice_exists
     logical, allocatable, dimension(:)          :: ice_el
 end type t_ice_nc
@@ -824,6 +825,8 @@ subroutine ice_init(ice, partit, mesh)
     allocate(ice%nc%u_buff      (   edge_size))
     allocate(ice%nc%v_buff      (   edge_size))
     allocate(ice%nc%delta       (   elem_size))
+    allocate(ice%nc%u_diff      (   edge_size))
+    allocate(ice%nc%v_diff      (   edge_size))
 
     ice%nc%ice_strength = 0.0_WP
     ice%nc%zeta_e       = 0.0_WP
@@ -840,6 +843,8 @@ subroutine ice_init(ice, partit, mesh)
     ice%nc%u_buff       = 0.0_WP
     ice%nc%v_buff       = 0.0_WP
     ice%nc%delta        = 0.0_WP
+    ice%nc%u_diff       = 0.0_WP
+    ice%nc%v_diff       = 0.0_WP
 
     !___________________________________________________________________________
     ! initialse coupling array of ice derived type

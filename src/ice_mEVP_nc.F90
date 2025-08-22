@@ -94,8 +94,8 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
     !___________________________________________________________________________
     integer                               :: el, eledges(3)
     real(kind=WP)                         :: uu(3), vv(3), cx(3)
-    real(kind=WP), allocatable            :: udif(:), vdif(:)
     real(kind=WP), contiguous, dimension(:), pointer  :: u_ice_aux, v_ice_aux, rhs_u, rhs_v
+    real(kind=WP), contiguous, dimension(:), pointer  :: udif, vdif
     real(kind=WP), contiguous, dimension(:), pointer  :: zeta_e
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
@@ -103,13 +103,14 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
 #include "associate_mesh_ass.h"
     u_ice_aux => ice%uice_aux
     v_ice_aux => ice%vice_aux
+    udif      => ice%nc%u_diff
+    vdif      => ice%nc%v_diff
     rhs_u     => ice%nc%rhs_u
     rhs_v     => ice%nc%rhs_v
     zeta_e    => ice%nc%zeta_e
 
 
     ! cycle 1: assemble differences
-    allocate(udif(myDim_edge2D+eDim_edge2D), vdif(myDim_edge2D+eDim_edge2D))
     udif = 0.0_WP
     vdif = 0.0_WP
 
@@ -144,8 +145,6 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
         rhs_u(eledges(3))=rhs_u(eledges(3))+cx(3)*(uu(1)-uu(2))
         rhs_v(eledges(3))=rhs_v(eledges(3))+cx(3)*(vv(1)-vv(2))
     end do
-
-    deallocate(udif, vdif)
 
 end subroutine nc_stabilization_loc
 end module
