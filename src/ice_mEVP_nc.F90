@@ -253,14 +253,16 @@ subroutine stress_tensor_nc(ice, partit, mesh)
     USE MOD_PARTIT
     USE MOD_PARSUP
     USE MOD_MESH
+    use elem_center_interface
     implicit none 
     type(t_ice)   , intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(in)   , target :: mesh
+    type(t_mesh)  , intent(inout)   , target :: mesh
     !___________________________________________________________________________
     integer       :: elem, elnodes(3), eledges(3)
     real(kind=WP) :: dx(3), dy(3), usum, vsum
-    real(kind=WP) :: val3, vale, det2, det1, meancos
+    real(kind=WP) :: val3, vale, det2, det1
+    real(kind=WP) :: x, y, meancos
     real(kind=WP) :: eps11, eps12, eps22, eps1, eps2, delta, pressure
     real(kind=WP) :: r1, r2, r3, si1, si2
     !___________________________________________________________________________
@@ -292,9 +294,12 @@ subroutine stress_tensor_nc(ice, partit, mesh)
         dy = - 2.0_WP * gradient_sca(4:6,elem)
 
         ! metrics
-        vsum = sum(v_ice_aux(eledges))
         usum = sum(u_ice_aux(eledges))
-        meancos = metric_factor(elem)
+        vsum = sum(v_ice_aux(eledges))
+
+        !meancos = metric_factor(elem)
+        call elem_center(elem, x, y, mesh)
+        meancos = sin(y) / cos(y) / r_earth
 
         ! deformation rate tensor of element elem
         eps11 = sum(dx * u_ice_aux(eledges))
