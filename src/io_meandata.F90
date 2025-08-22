@@ -240,6 +240,10 @@ CASE ('dhe        ')
     
 !___________________________________________________________________________________________________________________________________
 ! output sea ice 
+CASE ('delta')
+    if (use_ice) then
+    call def_stream(elem2D, myDim_elem2D, 'delta'    , 'deformation'    , '1/s', ice%nc%delta(1:myDim_elem2D)       , io_list(i)%freq, io_list(i)%unit, io_list(i)%precision, partit, mesh)
+    end if
 CASE ('uice      ')
     if (use_ice) then
     call def_stream(nod2D, myDim_nod2D, 'uice',     'ice velocity x',                 'm/s',    ice%uice_nod(:),                     io_list(i)%freq, io_list(i)%unit, io_list(i)%precision, partit, mesh)
