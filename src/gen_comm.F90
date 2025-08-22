@@ -591,14 +591,15 @@ subroutine communication_edgen(partit, mesh)
          if (part(elnodes(k)) == mype) then
             ! mype might need the edge opposite of elnodes(k)
             k_ed = modulo(k,3) + 1 ! eledges(k_ed) is opposite of elnodes(k)
+            egde = eledges(k_ed)
             ! only receive opposite edge if none of its nodes is in mype
-            if (part(edges(1,eledges(k_ed))) /= mype .and. part(edges(2,eledges(k_ed))) /= mype) then
+            if (part(edges(1,edge)) /= mype .and. part(edges(2,edge)) /= mype) then
                ! check if the edge is still not collected
-               if (recv_from_pe(eledges(k_ed)) == -1) then
+               if (recv_from_pe(edge) == -1) then
                   ! smallest PE that owns a node of the edge
-                  np = min(part(edges(1,eledges(k_ed))), part(edges(2,eledges(k_ed))))
+                  np = min(part(edges(1,edge)), part(edges(2,edge)))
                   num_recv(np) = num_recv(np) + 1   ! = 1 if an edge is received from PE np
-                  recv_from_pe(eledges(k_ed)) = np  ! PE from which the edge is received
+                  recv_from_pe(edge) = np  ! PE from which the edge is received
                end if
             end if
          end if
@@ -611,18 +612,19 @@ subroutine communication_edgen(partit, mesh)
          if (np /= mype) then
             ! np might need the edge opposite of elnodes(k) -> eledges(k_ed)
             k_ed = modulo(k,3) + 1
+            edge = eledges(k_ed)
             ! check if eledges(k_ed) is in np
-            if (part(edges(1,eledges(k_ed))) == np .or. part(edges(2,eledges(k_ed))) == np) cycle
+            if (part(edges(1,edge)) == np .or. part(edges(2,edge)) == np) cycle
             ! check if eledges(k_ed) is in mype
             ! use smallest PE that owns a node of the edge so that the edge is not send from two PEs
-            if (mype == min(part(edges(1,eledges(k_ed))), part(edges(2,eledges(k_ed))))) then
+            if (mype == min(part(edges(1,edge)), part(edges(2,edge)))) then
                do l = 1, MAX_LAENDERECK
                   ! check if the edge is already collected
-                  if (send_to_pe(l,eledges(k_ed)) == np) then
+                  if (send_to_pe(l,edge) == np) then
                      exit
                   ! only add edge to send if it is not already collected
-                  else if (send_to_pe(l,eledges(k_ed)) == -1) then
-                     send_to_pe(l,eledges(k_ed)) = np    ! PE the edge is sent to
+                  else if (send_to_pe(l,edge) == -1) then
+                     send_to_pe(l,edge) = np    ! PE the edge is sent to
                      num_send(np) = num_send(np) + 1     ! = 1 if an edge is sent to PE np
                      exit
                   else if (l == MAX_LAENDERECK) then
