@@ -592,8 +592,8 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     rhoice          => ice%thermo%rhoice
     rhosno          => ice%thermo%rhosno
     inv_rhowat      => ice%thermo%inv_rhowat
-    u_ice_nod       => ice%uice_nod(:)
-    v_ice_nod       => ice%vice_nod(:)
+    u_ice_nod       => ice%nc%u_ice_nod(:)
+    v_ice_nod       => ice%nc%v_ice_nod(:)
     zeta_e          => ice%zeta_e(:)
     !___________________________________________________________________________
     val3=1.0_WP/3.0_WP

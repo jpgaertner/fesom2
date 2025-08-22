@@ -497,8 +497,8 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
     stress_atmice_x => ice%stress_atmice_x
     stress_atmice_y => ice%stress_atmice_y
     inv_mass_a      => ice%nc%inv_mass_a
-    u_ice_nod       => ice%uice_nod
-    v_ice_nod       => ice%vice_nod
+    u_ice_nod       => ice%nc%u_ice_nod
+    v_ice_nod       => ice%nc%v_ice_nod
     ice_exists      => ice%nc%ice_exists
 
     steps = ice%evp_rheol_steps
@@ -726,8 +726,8 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
     stress_atmice_y => ice%stress_atmice_y
     inv_mass        => ice%nc%inv_mass
     inv_mass_a      => ice%nc%inv_mass_a
-    u_ice_nod       => ice%uice_nod
-    v_ice_nod       => ice%vice_nod
+    u_ice_nod       => ice%nc%u_ice_nod
+    v_ice_nod       => ice%nc%v_ice_nod
     ice_exists      => ice%nc%ice_exists
 
     det2 = 1.0_WP / (1.0_WP + ice%alpha_evp)

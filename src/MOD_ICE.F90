@@ -105,8 +105,9 @@ type t_ice_nc
     real(kind=WP), allocatable, dimension(:)    :: inv_mass, inv_mass_a
     real(kind=WP), allocatable, dimension(:)    :: gsshx, gsshy
     real(kind=WP), allocatable, dimension(:)    :: rhs_u, rhs_v, R_u, R_v
-    real(kind=WP), allocatable, dimension(:)    :: u_buff, v_buff
+    real(kind=WP), allocatable, dimension(:)    :: u_ice_nod, v_ice_nod
     real(kind=WP), allocatable, dimension(:)    :: delta
+    real(kind=WP), allocatable, dimension(:)    :: u_buff, v_buff
     logical, allocatable, dimension(:)          :: ice_exists, ice_el
 end type t_ice_nc
 !
@@ -139,8 +140,8 @@ TYPE T_ICE
 
     !___________________________________________________________________________
     ! zonal & merdional ice velocity
-    real(kind=WP), allocatable, dimension(:)    :: uice, uice_rhs, uice_old, uice_aux, uice_ib, uice_nod
-    real(kind=WP), allocatable, dimension(:)    :: vice, vice_rhs, vice_old, vice_aux, vice_ib, vice_nod
+    real(kind=WP), allocatable, dimension(:)    :: uice, uice_rhs, uice_old, uice_aux, uice_ib
+    real(kind=WP), allocatable, dimension(:)    :: vice, vice_rhs, vice_old, vice_aux, vice_ib
     
     ! surface stess atm<-->ice, oce<-->ice
     real(kind=WP), allocatable, dimension(:)    :: stress_atmice_x, stress_iceoce_x
@@ -684,18 +685,14 @@ subroutine ice_init(ice, partit, mesh)
     allocate(ice%stress_atmice_y(   node_size))
     allocate(ice%h_ice          (   node_size))
     allocate(ice%h_snow         (   node_size))
-    allocate(ice%uice_nod       (   node_size))
-    allocate(ice%vice_nod       (   node_size))
     allocate(ice%zeta_e         (   edge_size))
     
     ice%uice            = 0.0_WP
-    ice%uice_nod        = 0.0_WP
     ice%uice_rhs        = 0.0_WP
     ice%uice_old        = 0.0_WP
     ice%stress_atmice_x = 0.0_WP
     ice%stress_iceoce_x = 0.0_WP
     ice%vice            = 0.0_WP
-    ice%vice_nod        = 0.0_WP
     ice%vice_rhs        = 0.0_WP
     ice%vice_old        = 0.0_WP
     ice%stress_atmice_y = 0.0_WP
@@ -824,6 +821,8 @@ subroutine ice_init(ice, partit, mesh)
     allocate(ice%nc%delta       (   elem_size))
     allocate(ice%nc%u_diff      (   edge_size))
     allocate(ice%nc%v_diff      (   edge_size))
+    allocate(ice%nc%u_ice_nod   (   node_size))
+    allocate(ice%nc%v_ice_nod   (   node_size))
 
     ice%nc%ice_strength = 0.0_WP
     ice%nc%zeta_e       = 0.0_WP
@@ -842,6 +841,8 @@ subroutine ice_init(ice, partit, mesh)
     ice%nc%delta        = 0.0_WP
     ice%nc%u_diff       = 0.0_WP
     ice%nc%v_diff       = 0.0_WP
+    ice%nc%u_ice_nod    = 0.0_WP
+    ice%nc%v_ice_nod    = 0.0_WP
 
     !___________________________________________________________________________
     ! initialse coupling array of ice derived type

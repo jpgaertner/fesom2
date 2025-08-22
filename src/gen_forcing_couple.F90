@@ -178,8 +178,8 @@ subroutine update_atm_forcing(istep, ice, tracers, dynamics, partit, mesh)
       u_ice_loc = ice%uice
       v_ice_loc = ice%vice
   else if (ice%ice_vplace == 1) then
-      u_ice_loc = ice%uice_nod
-      v_ice_loc = ice%vice_nod
+      u_ice_loc = ice%nc%u_ice_nod
+      v_ice_loc = ice%nc%v_ice_nod
   end if
   
   !_____________________________________________________________________________
