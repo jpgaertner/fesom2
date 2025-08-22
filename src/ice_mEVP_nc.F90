@@ -88,12 +88,13 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
     use o_arrays
     use g_comm_auto
     implicit none
-    type(t_ice),    intent(inout), target :: ice
-    type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(in)   , target :: mesh
+    type(t_ice),    intent(inout), target  :: ice
+    type(t_partit), intent(inout), target  :: partit
+    type(t_mesh)  , intent(in)   , target  :: mesh
     !___________________________________________________________________________
-    integer                               :: el, eledges(3)
-    real(kind=WP)                         :: uu(3), vv(3), cx(3)
+    integer        :: el, eledges(3)
+    real(kind=WP)  :: uu(3), vv(3), cx(3)
+    !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: u_ice_aux, v_ice_aux, rhs_u, rhs_v
     real(kind=WP), contiguous, dimension(:), pointer  :: u_diff, v_diff
     real(kind=WP), contiguous, dimension(:), pointer  :: zeta_e
@@ -156,18 +157,18 @@ subroutine ice_strength_mass_nc(ice, partit, mesh)
     USE MOD_MESH
     use g_comm_auto
     implicit none
-    type(t_ice)   , intent(inout), target :: ice
-    type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(in)   , target :: mesh
+    type(t_ice)   , intent(inout), target  :: ice
+    type(t_partit), intent(inout), target  :: partit
+    type(t_mesh)  , intent(in)   , target  :: mesh
     !___________________________________________________________________________
-    integer       :: elem, ed, elnodes(3), eledges(3)
-    real(kind=WP) :: mmass, val3, msum, a_ice_ed, cluster_area, asum
+    integer        :: elem, ed, elnodes(3), eledges(3)
+    real(kind=WP)  :: mmass, val3, msum, a_ice_ed, cluster_area, asum
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength
     real(kind=WP), contiguous, dimension(:), pointer  :: zeta_e
     real(kind=WP), contiguous, dimension(:), pointer  :: a_ice, m_ice, m_snow
     real(kind=WP), contiguous, dimension(:), pointer  :: inv_mass, inv_mass_a
-    real(kind=WP), pointer  :: rhoice, rhosno
+    real(kind=WP), pointer                            :: rhoice, rhosno
     logical, contiguous, dimension(:), pointer        :: ice_exists, ice_el
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
@@ -255,16 +256,16 @@ subroutine stress_tensor_nc(ice, partit, mesh)
     USE MOD_MESH
     use elem_center_interface
     implicit none 
-    type(t_ice)   , intent(inout), target :: ice
-    type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(inout)   , target :: mesh
+    type(t_ice)   , intent(inout), target  :: ice
+    type(t_partit), intent(inout), target  :: partit
+    type(t_mesh)  , intent(inout), target  :: mesh
     !___________________________________________________________________________
-    integer       :: elem, elnodes(3), eledges(3)
-    real(kind=WP) :: dx(3), dy(3), usum, vsum
-    real(kind=WP) :: val3, vale, det2, det1
-    real(kind=WP) :: x, y, meancos
-    real(kind=WP) :: eps11, eps12, eps22, eps1, eps2, delta, pressure
-    real(kind=WP) :: r1, r2, r3, si1, si2
+    integer        :: elem, elnodes(3), eledges(3)
+    real(kind=WP)  :: dx(3), dy(3), usum, vsum
+    real(kind=WP)  :: val3, vale, det2, det1
+    real(kind=WP)  :: x, y, meancos
+    real(kind=WP)  :: eps11, eps12, eps22, eps1, eps2, delta, pressure
+    real(kind=WP)  :: r1, r2, r3, si1, si2
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: u_ice_aux, v_ice_aux
     real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength
@@ -311,7 +312,6 @@ subroutine stress_tensor_nc(ice, partit, mesh)
         eps1 = eps11 + eps22
         eps2 = eps11 - eps22
 
-        ! moduli
         delta = eps1**2 + vale * (eps2**2 + 4.0_WP * eps12**2)
         delta = sqrt(delta)
         pressure = ice_strength(elem) / (delta + ice%delta_min)
@@ -337,13 +337,13 @@ subroutine ssh2rhs_nc(ice, partit, mesh)
     USE MOD_PARSUP
     USE MOD_MESH
     implicit none 
-    type(t_ice)   , intent(inout), target :: ice
-    type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(in)   , target :: mesh
+    type(t_ice)   , intent(inout), target  :: ice
+    type(t_partit), intent(inout), target  :: partit
+    type(t_mesh)  , intent(in)   , target  :: mesh
     !___________________________________________________________________________
-    integer :: elem, elnodes(3), eledges(3)
-    real(kind=WP) :: dx(3), dy(3), vol
-    real(kind=WP) :: val3, aa, bb
+    integer        :: elem, elnodes(3), eledges(3)
+    real(kind=WP)  :: dx(3), dy(3), vol
+    real(kind=WP)  :: val3, aa, bb
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: gsshx, gsshy
     real(kind=WP), contiguous, dimension(:), pointer  :: elevation
@@ -392,14 +392,14 @@ subroutine stress2rhs_nc(ice, partit, mesh)
     use mod_nc_stabilization_loc
     use elem_center_interface
     implicit none
-    type(t_ice)   , intent(inout), target :: ice
-    type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(inout), target :: mesh
+    type(t_ice)   , intent(inout), target  :: ice
+    type(t_partit), intent(inout), target  :: partit
+    type(t_mesh)  , intent(inout), target  :: mesh
     !___________________________________________________________________________
-    integer :: elem, eledges(3), k, row
-    real(kind=WP) :: val3, vol, cluster_area
-    real(kind=WP) :: x, y, meancos
-    real(kind=WP) :: dx(3), dy(3)
+    integer        :: elem, eledges(3), k, row
+    real(kind=WP)  :: val3, vol, cluster_area
+    real(kind=WP)  :: x, y, meancos
+    real(kind=WP)  :: dx(3), dy(3)
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: rhs_u, rhs_v
     real(kind=WP), contiguous, dimension(:), pointer  :: sigma11, sigma12, sigma22
@@ -479,13 +479,13 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
     USE MOD_MESH
     use g_comm_auto
     implicit none
-    type(t_ice)   , intent(inout), target :: ice
-    type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(in)   , target :: mesh
+    type(t_ice)   , intent(inout), target  :: ice
+    type(t_partit), intent(inout), target  :: partit
+    type(t_mesh)  , intent(in)   , target  :: mesh
     !___________________________________________________________________________
-    integer :: steps, shortsteps, i
-    real(kind=WP) :: rdt, drag, det, fc
-    real(kind=WP) :: uw, vw, umod, stx, sty, rhsu, rhsv
+    integer        :: steps, shortsteps, i
+    real(kind=WP)  :: rdt, drag, det, fc
+    real(kind=WP)  :: uw, vw, umod, stx, sty, rhsu, rhsv
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: u_ice, v_ice, u_ice_aux, v_ice_aux, rhs_u, rhs_v
     real(kind=WP), contiguous, dimension(:), pointer  :: inv_mass_a
@@ -606,15 +606,15 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     use ice_mEVP_nc_interfaces
     use elem_center_interface
     implicit none
-    type(t_ice)   , intent(inout), target :: ice
-    type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(inout), target :: mesh
+    type(t_ice)   , intent(inout), target  :: ice
+    type(t_partit), intent(inout), target  :: partit
+    type(t_mesh)  , intent(inout), target  :: mesh
     !___________________________________________________________________________
-    integer :: elem, eledges(3)
-    real(kind=WP) :: val3, vale
-    real(kind=WP) :: dx(3), dy(3), usum, vsum
-    real(kind=WP) :: eps11, eps22, eps12, eps1, eps2, pressure, si11, si22, si12
-    real(kind=WP) :: x, y, meancos
+    integer        :: elem, eledges(3)
+    real(kind=WP)  :: val3, vale
+    real(kind=WP)  :: dx(3), dy(3), usum, vsum
+    real(kind=WP)  :: eps11, eps22, eps12, eps1, eps2, pressure, si11, si22, si12
+    real(kind=WP)  :: x, y, meancos
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: rhs_u, rhs_v, u_ice_aux, v_ice_aux
     real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength, delta
@@ -690,14 +690,14 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
     use g_comm_auto
     use ice_mEVP_nc_interfaces
     implicit none
-    type(t_ice)   , intent(inout), target :: ice
-    type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(in)   , target :: mesh
+    type(t_ice)   , intent(inout), target  :: ice
+    type(t_partit), intent(inout), target  :: partit
+    type(t_mesh)  , intent(in)   , target  :: mesh
     !___________________________________________________________________________
-    integer :: steps, shortsteps, i
-    real(kind=WP) :: det1, det2, val3, cluster_area
-    real(kind=WP) :: rdt, drag, det, fc
-    real(kind=WP) :: uw, vw, umod, stx, sty, rhsu, rhsv
+    integer        :: steps, shortsteps, i
+    real(kind=WP)  :: det1, det2, val3, cluster_area
+    real(kind=WP)  :: rdt, drag, det, fc
+    real(kind=WP)  :: uw, vw, umod, stx, sty, rhsu, rhsv
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: u_ice, v_ice, u_ice_aux, v_ice_aux
     real(kind=WP), contiguous, dimension(:), pointer  :: rhs_u, rhs_v, R_u, R_v, gsshx, gsshy
