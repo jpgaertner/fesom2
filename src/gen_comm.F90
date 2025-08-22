@@ -591,7 +591,7 @@ subroutine communication_edgen(partit, mesh)
          if (part(elnodes(k)) == mype) then
             ! mype might need the edge opposite of elnodes(k)
             k_ed = modulo(k,3) + 1 ! eledges(k_ed) is opposite of elnodes(k)
-            egde = eledges(k_ed)
+            edge = eledges(k_ed)
             ! only receive opposite edge if none of its nodes is in mype
             if (part(edges(1,edge)) /= mype .and. part(edges(2,edge)) /= mype) then
                ! check if the edge is still not collected
