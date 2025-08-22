@@ -175,8 +175,8 @@ subroutine update_atm_forcing(istep, ice, tracers, dynamics, partit, mesh)
 
   ! ensure that nodal ice velocities are used
   if (ice%ice_vplace == 0) then
-      u_ice_loc = ice%u_ice
-      v_ice_loc = ice%v_ice
+      u_ice_loc = ice%uice
+      v_ice_loc = ice%vice
   else if (ice%ice_vplace == 1) then
       u_ice_loc = ice%uice_nod
       v_ice_loc = ice%vice_nod
