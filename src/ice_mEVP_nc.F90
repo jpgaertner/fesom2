@@ -385,13 +385,15 @@ subroutine stress2rhs_nc(ice, partit, mesh)
     USE MOD_PARSUP
     USE MOD_MESH
     use mod_nc_stabilization_loc
+    use elem_center_interface
     implicit none
     type(t_ice)   , intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(in)   , target :: mesh
+    type(t_mesh)  , intent(inout), target :: mesh
     !___________________________________________________________________________
     integer :: elem, eledges(3), k, row
-    real(kind=WP) :: val3, vol, cluster_area, meancos
+    real(kind=WP) :: val3, vol, cluster_area
+    real(kind=WP) :: x, y, meancos
     real(kind=WP) :: dx(3), dy(3)
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: rhs_u, rhs_v
@@ -427,7 +429,10 @@ subroutine stress2rhs_nc(ice, partit, mesh)
         vol = elem_area(elem)
         dx = - 2.0_WP * gradient_sca(1:3,elem)
         dy = - 2.0_WP * gradient_sca(4:6,elem)
-        meancos = metric_factor(elem)
+
+        !meancos = metric_factor(elem)
+        call elem_center(elem, x, y, mesh)
+        meancos = sin(y) / cos(y) / r_earth
 
         if (ice_el(elem)) then
             do k = 1, 3
@@ -555,17 +560,8 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
             end if
         end do
 
-        do i=1,myDim_edge2D
-            ! apply coastal sea ice velocity boundary conditions
-            if (myList_edge2D(i) > edge2D_in) then
-                u_ice_aux(i)=0.0_WP
-                v_ice_aux(i)=0.0_WP
-            end if
-        end do
-
         call exchange_edge2D(u_ice_aux, partit)
         call exchange_edge2D(v_ice_aux, partit)
-
     end do
 
     u_ice = u_ice_aux
@@ -573,9 +569,8 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
 
 
     ! interpolate velocities from edges to nodes
-    ! (only used for writing the output file)
-    u_ice_nod = 0
-    v_ice_nod = 0
+    u_ice_nod = 0.0_WP
+    v_ice_nod = 0.0_WP
 
     do i = 1, myDim_edge2D
         ! sum the adjacent edge velocities at the nodes
@@ -608,7 +603,7 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     implicit none
     type(t_ice)   , intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
-    type(t_mesh)  , intent(inout)   , target :: mesh
+    type(t_mesh)  , intent(inout), target :: mesh
     !___________________________________________________________________________
     integer :: elem, eledges(3)
     real(kind=WP) :: val3, vale
@@ -637,7 +632,6 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
 
     rhs_u = 0.0_WP
     rhs_v = 0.0_WP
-
 
     do elem = 1, myDim_elem2D
         ! if element has any cavity node skip it
@@ -795,7 +789,6 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
 
         call exchange_edge2D(u_ice_aux, partit)
         call exchange_edge2D(v_ice_aux, partit)
-
     end do
 
     u_ice = u_ice_aux
