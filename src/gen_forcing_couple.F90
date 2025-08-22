@@ -131,9 +131,10 @@ subroutine update_atm_forcing(istep, ice, tracers, dynamics, partit, mesh)
   !integer, parameter                    :: nci=192, ncj=94 ! T62 grid
   !real(kind=WP), dimension(nci,ncj)     :: array_nc, array_nc2,array_nc3,x
   !character(500)                        :: file
+  real(kind=WP), dimension(partit%myDim_nod2D + partit%eDim_nod2D) :: u_ice_loc, v_ice_loc
   !_____________________________________________________________________________
   ! pointer on necessary derived types
-  real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, u_w, v_w
+  real(kind=WP), dimension(:), pointer  :: u_w, v_w
   real(kind=WP), dimension(:), pointer  :: stress_atmice_x, stress_atmice_y
   real(kind=WP), dimension(:), pointer  :: a_ice, m_ice, m_snow
 #if defined (__oasis) || defined (__ifsinterface)
@@ -150,8 +151,6 @@ subroutine update_atm_forcing(istep, ice, tracers, dynamics, partit, mesh)
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-  u_ice            => ice%uice(:)
-  v_ice            => ice%vice(:)
   u_w              => ice%srfoce_u(:)
   v_w              => ice%srfoce_v(:)
   stress_atmice_x  => ice%stress_atmice_x(:)
@@ -173,6 +172,15 @@ subroutine update_atm_forcing(istep, ice, tracers, dynamics, partit, mesh)
   tmp_ice_heat_flux=> ice%atmcoupl%tmpice_flx_h(:)
 #endif 
   rhoair           => ice%thermo%rhoair
+
+  ! ensure that nodal ice velocities are used
+  if (ice%ice_vplace == 0) then
+      u_ice_loc = ice%u_ice
+      v_ice_loc = ice%v_ice
+  else if (ice%ice_vplace == 1) then
+      u_ice_loc = ice%uice_nod
+      v_ice_loc = ice%vice_nod
+  end if
   
   !_____________________________________________________________________________
   t1=MPI_Wtime()
@@ -566,8 +574,8 @@ subroutine update_atm_forcing(istep, ice, tracers, dynamics, partit, mesh)
         stress_atmoce_y(i) = Cd_atm_oce_arr(i)*aux*dvy
      end if
      !__________________________________________________________________________
-     dux=u_wind(i)-u_ice(i) 
-     dvy=v_wind(i)-v_ice(i)
+     dux=u_wind(i)-u_ice_loc(i) 
+     dvy=v_wind(i)-v_ice_loc(i)
      aux=sqrt(dux**2+dvy**2)*rhoair
      stress_atmice_x(i) = Cd_atm_ice_arr(i)*aux*dux
      stress_atmice_y(i) = Cd_atm_ice_arr(i)*aux*dvy

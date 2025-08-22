@@ -72,17 +72,15 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
     !___________________________________________________________________________
     integer                  :: n, elem, elnodes(3),n1
     real(kind=WP)            :: aux
+    real(kind=WP), dimension(partit%myDim_nod2D + partit%eDim_nod2D) :: u_ice_loc, v_ice_loc
     !___________________________________________________________________________
     ! pointer on necessary derived types
-    real(kind=WP), dimension(:), pointer  :: u_ice, v_ice, a_ice, u_w, v_w
+    real(kind=WP), dimension(:), pointer  :: a_ice, u_w, v_w
     real(kind=WP), dimension(:), pointer  :: stress_iceoce_x, stress_iceoce_y  
-    real(kind=WP), dimension(partit%myDim_nod2D + partit%eDim_nod2D) :: u_ice_loc, v_ice_loc
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
-    u_ice           => ice%uice(:)
-    v_ice           => ice%vice(:)
     a_ice           => ice%data(1)%values(:)
     u_w             => ice%srfoce_u(:)
     v_w             => ice%srfoce_v(:)
@@ -91,8 +89,8 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
 
     ! ensure that nodal ice velocities are used
     if (ice%ice_vplace == 0) then
-        u_ice_loc = u_ice
-        v_ice_loc = v_ice
+        u_ice_loc = ice%u_ice
+        v_ice_loc = ice%v_ice
     else if (ice%ice_vplace == 1) then
         u_ice_loc = ice%uice_nod
         v_ice_loc = ice%vice_nod
