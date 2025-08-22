@@ -101,16 +101,13 @@ END TYPE T_ICE_THERMO
 type t_ice_nc
     !___________________________________________________________________________
     real(kind=WP), allocatable, dimension(:)    :: ice_strength
-    real(kind=WP), allocatable, dimension(:)    :: zeta_e
+    real(kind=WP), allocatable, dimension(:)    :: zeta_e, u_diff, v_diff
     real(kind=WP), allocatable, dimension(:)    :: inv_mass, inv_mass_a
     real(kind=WP), allocatable, dimension(:)    :: gsshx, gsshy
-    real(kind=WP), allocatable, dimension(:)    :: rhs_u, rhs_v
-    real(kind=WP), allocatable, dimension(:)    :: R_u, R_v
+    real(kind=WP), allocatable, dimension(:)    :: rhs_u, rhs_v, R_u, R_v
     real(kind=WP), allocatable, dimension(:)    :: u_buff, v_buff
     real(kind=WP), allocatable, dimension(:)    :: delta
-    real(kind=WP), allocatable, dimension(:)    :: u_diff, v_diff
-    logical, allocatable, dimension(:)          :: ice_exists
-    logical, allocatable, dimension(:)          :: ice_el
+    logical, allocatable, dimension(:)          :: ice_exists, ice_el
 end type t_ice_nc
 !
 !

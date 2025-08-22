@@ -95,7 +95,7 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
     integer                               :: el, eledges(3)
     real(kind=WP)                         :: uu(3), vv(3), cx(3)
     real(kind=WP), contiguous, dimension(:), pointer  :: u_ice_aux, v_ice_aux, rhs_u, rhs_v
-    real(kind=WP), contiguous, dimension(:), pointer  :: udif, vdif
+    real(kind=WP), contiguous, dimension(:), pointer  :: u_diff, v_diff
     real(kind=WP), contiguous, dimension(:), pointer  :: zeta_e
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
@@ -103,47 +103,47 @@ subroutine nc_stabilization_loc(ice, partit, mesh)
 #include "associate_mesh_ass.h"
     u_ice_aux => ice%uice_aux
     v_ice_aux => ice%vice_aux
-    udif      => ice%nc%u_diff
-    vdif      => ice%nc%v_diff
+    u_diff    => ice%nc%u_diff
+    v_diff    => ice%nc%v_diff
     rhs_u     => ice%nc%rhs_u
     rhs_v     => ice%nc%rhs_v
     zeta_e    => ice%nc%zeta_e
 
 
     ! cycle 1: assemble differences
-    udif = 0.0_WP
-    vdif = 0.0_WP
+    u_diff = 0.0_WP
+    v_diff = 0.0_WP
 
     do el = 1, myDim_elem2D
         eledges = elem_edges(:, el)
 
         uu = u_ice_aux(eledges)
         vv = v_ice_aux(eledges)
-        udif(eledges(1))=udif(eledges(1))-uu(2)+uu(3)
-        vdif(eledges(1))=vdif(eledges(1))-vv(2)+vv(3)
-        udif(eledges(2))=udif(eledges(2))+uu(1)-uu(3)
-        vdif(eledges(2))=vdif(eledges(2))+vv(1)-vv(3)
-        udif(eledges(3))=udif(eledges(3))-uu(1)+uu(2)
-        vdif(eledges(3))=vdif(eledges(3))-vv(1)+vv(2)
+        u_diff(eledges(1)) = u_diff(eledges(1)) - uu(2) + uu(3)
+        v_diff(eledges(1)) = v_diff(eledges(1)) - vv(2) + vv(3)
+        u_diff(eledges(2)) = u_diff(eledges(2)) + uu(1) - uu(3)
+        v_diff(eledges(2)) = v_diff(eledges(2)) + vv(1) - vv(3)
+        u_diff(eledges(3)) = u_diff(eledges(3)) - uu(1) + uu(2)
+        v_diff(eledges(3)) = v_diff(eledges(3)) - vv(1) + vv(2)
     end do
 
-    call exchange_edge2D(udif, partit)
-    call exchange_edge2D(vdif, partit)
+    call exchange_edge2D(u_diff, partit)
+    call exchange_edge2D(v_diff, partit)
 
     ! cycle 2: assemble contributions to test functions
     do el = 1, myDim_elem2D
         eledges = elem_edges(:, el)
 
-        cx = -ice%nc_stab * zeta_e(eledges)
-        uu = udif(eledges)
-        vv = vdif(eledges)
+        cx = - ice%nc_stab * zeta_e(eledges)
+        uu = u_diff(eledges)
+        vv = v_diff(eledges)
 
-        rhs_u(eledges(1))=rhs_u(eledges(1))+cx(1)*(uu(2)-uu(3))
-        rhs_v(eledges(1))=rhs_v(eledges(1))+cx(1)*(vv(2)-vv(3))
-        rhs_u(eledges(2))=rhs_u(eledges(2))+cx(2)*(uu(3)-uu(1))
-        rhs_v(eledges(2))=rhs_v(eledges(2))+cx(2)*(vv(3)-vv(1))
-        rhs_u(eledges(3))=rhs_u(eledges(3))+cx(3)*(uu(1)-uu(2))
-        rhs_v(eledges(3))=rhs_v(eledges(3))+cx(3)*(vv(1)-vv(2))
+        rhs_u(eledges(1)) = rhs_u(eledges(1)) + cx(1) * (uu(2) - uu(3))
+        rhs_v(eledges(1)) = rhs_v(eledges(1)) + cx(1) * (vv(2) - vv(3))
+        rhs_u(eledges(2)) = rhs_u(eledges(2)) + cx(2) * (uu(3) - uu(1))
+        rhs_v(eledges(2)) = rhs_v(eledges(2)) + cx(2) * (vv(3) - vv(1))
+        rhs_u(eledges(3)) = rhs_u(eledges(3)) + cx(3) * (uu(1) - uu(2))
+        rhs_v(eledges(3)) = rhs_v(eledges(3)) + cx(3) * (vv(1) - vv(2))
     end do
 
 end subroutine nc_stabilization_loc
