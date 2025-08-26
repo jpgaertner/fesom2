@@ -524,7 +524,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     !NR for stress_tensor_m
     integer         :: el, elnodes(3), eledges(3)
     real(kind=WP)   :: msum, asum
-    real(kind=WP)   :: eps1, eps2, pressure, pressure_fac(partit%myDim_elem2D), delta
+    real(kind=WP)   :: eps1, eps2, pressure, pressure_fac(partit%myDim_elem2D)!, delta
     real(kind=WP)   :: val3, meancos, vale
     real(kind=WP)   :: det1, det2, r1, r2, r3, si1, si2
     !NR for stress2rhs_m
@@ -555,7 +555,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     logical, allocatable                            :: ice_exists(:)
     real(kind=WP), allocatable                      :: inv_thickness(:), mass(:)
     real(kind=WP)                                   :: a_ice_ed, area_ed, uw, vw, stx, sty, cor
-    real(kind=WP), dimension(:), pointer            :: zeta_e
+    real(kind=WP), dimension(:), pointer            :: zeta_e, delta
     !___________________________________________________________________________
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
@@ -595,6 +595,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
     u_ice_nod       => ice%nc%u_ice_nod(:)
     v_ice_nod       => ice%nc%v_ice_nod(:)
     zeta_e          => ice%zeta_e(:)
+    delta           => ice%nc%delta(:)
     !___________________________________________________________________________
     val3=1.0_WP/3.0_WP
     vale=1.0_WP/(ice%ellipse**2)
@@ -856,9 +857,9 @@ subroutine EVPdynamics_m(ice, partit, mesh)
                 eps2 = eps11(el) - eps22(el)
 
                 ! ====== moduli:
-                delta = sqrt(eps1**2+vale*(eps2**2+4.0_WP*eps12(el)**2))
+                delta(el) = sqrt(eps1**2+vale*(eps2**2+4.0_WP*eps12(el)**2))
 
-                pressure = pressure_fac(el)/(delta+ice%delta_min)
+                pressure = pressure_fac(el)/(delta(el)+ice%delta_min)
 
                 !        si1 = det1*(sigma11(el)+sigma22(el)) + pressure*(eps1-delta)
                 !        si2 = det1*(sigma11(el)-sigma22(el)) + pressure*eps2*vale
@@ -866,12 +867,12 @@ subroutine EVPdynamics_m(ice, partit, mesh)
                 !        sigma22(el) = 0.5_WP*(si1-si2)
                 !NR directly insert si1, si2 cancels some operations and should increase accuracy
                 sigma12(el) = det1*sigma12(el) +       pressure*eps12(el)*vale
-                sigma11(el) = det1*sigma11(el) + 0.5_WP*pressure*(eps1 - delta + eps2*vale)
-                sigma22(el) = det1*sigma22(el) + 0.5_WP*pressure*(eps1 - delta - eps2*vale)
+                sigma11(el) = det1*sigma11(el) + 0.5_WP*pressure*(eps1 - delta(el) + eps2*vale)
+                sigma22(el) = det1*sigma22(el) + 0.5_WP*pressure*(eps1 - delta(el) - eps2*vale)
 
 #if defined (__icepack)
                 rdg_conv_elem(el)  = -min((eps11(el)+eps22(el)),0.0_WP)
-                rdg_shear_elem(el) = 0.5_WP*(delta - abs(eps11(el)+eps22(el)))
+                rdg_shear_elem(el) = 0.5_WP*(delta(el) - abs(eps11(el)+eps22(el)))
 #endif
 
                 !  end do   ! fuse loops
