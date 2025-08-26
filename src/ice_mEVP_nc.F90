@@ -264,12 +264,12 @@ subroutine stress_tensor_nc(ice, partit, mesh)
     real(kind=WP)  :: dx(3), dy(3), usum, vsum
     real(kind=WP)  :: val3, vale, det2, det1
     real(kind=WP)  :: x, y, meancos
-    real(kind=WP)  :: eps11, eps12, eps22, eps1, eps2, delta, pressure
+    real(kind=WP)  :: eps11, eps12, eps22, eps1, eps2, pressure
     real(kind=WP)  :: r1, r2, r3, si1, si2
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: u_ice_aux, v_ice_aux
     real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength
-    real(kind=WP), contiguous, dimension(:), pointer  :: sigma11, sigma12, sigma22
+    real(kind=WP), contiguous, dimension(:), pointer  :: sigma11, sigma12, sigma22, delta
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
@@ -280,6 +280,7 @@ subroutine stress_tensor_nc(ice, partit, mesh)
     sigma11      => ice%work%sigma11
     sigma12      => ice%work%sigma12
     sigma22      => ice%work%sigma22
+    delta        => ice%nc%delta
 
     val3 = 1.0_WP / 3.0_WP
     vale = 1.0_WP / (ice%ellipse**2)
@@ -312,11 +313,11 @@ subroutine stress_tensor_nc(ice, partit, mesh)
         eps1 = eps11 + eps22
         eps2 = eps11 - eps22
 
-        delta = eps1**2 + vale * (eps2**2 + 4.0_WP * eps12**2)
-        delta = sqrt(delta)
-        pressure = ice_strength(elem) / (delta + ice%delta_min)
+        delta(elem) = eps1**2 + vale * (eps2**2 + 4.0_WP * eps12**2)
+        delta(elem) = sqrt(delta(elem))
+        pressure = ice_strength(elem) / (delta(elem) + ice%delta_min)
 
-        r1 = pressure * (eps1 - delta)
+        r1 = pressure * (eps1 - delta(elem))
         r2 = pressure * eps2 * vale
         r3 = pressure * eps12 * vale
         si1 = sigma11(elem) + sigma22(elem)
@@ -451,14 +452,18 @@ subroutine stress2rhs_nc(ice, partit, mesh)
             end do
         end if
     end do
+
     call nc_stabilization_loc(ice, partit, mesh)
+
     do row = 1, myDim_edge2D
         if (myList_edge2D(row) > edge2D_in) cycle
+
         if (edge_tri(2,row)>0) then
             cluster_area = sum(elem_area(edge_tri(:,row))) * val3 
         else
             cluster_area = elem_area(edge_tri(1,row)) * val3
         end if
+
         !### Sergey's version
         rhs_u(row) = ( rhs_u(row) * inv_mass(row) + gsshx(row) ) / cluster_area
         rhs_v(row) = ( rhs_v(row) * inv_mass(row) + gsshy(row) ) / cluster_area
