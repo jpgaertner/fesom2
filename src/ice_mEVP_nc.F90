@@ -254,7 +254,6 @@ subroutine stress_tensor_nc(ice, partit, mesh)
     USE MOD_PARTIT
     USE MOD_PARSUP
     USE MOD_MESH
-    use elem_center_interface
     implicit none 
     type(t_ice)   , intent(inout), target  :: ice
     type(t_partit), intent(inout), target  :: partit
@@ -298,10 +297,7 @@ subroutine stress_tensor_nc(ice, partit, mesh)
         ! metrics
         usum = sum(u_ice_aux(eledges))
         vsum = sum(v_ice_aux(eledges))
-
-        !meancos = metric_factor(elem)
-        call elem_center(elem, x, y, mesh)
-        meancos = sin(y) / cos(y) / r_earth
+        meancos = metric_factor(elem)
 
         ! deformation rate tensor of element elem
         eps11 = sum(dx * u_ice_aux(eledges))
@@ -391,7 +387,6 @@ subroutine stress2rhs_nc(ice, partit, mesh)
     USE MOD_PARSUP
     USE MOD_MESH
     use mod_nc_stabilization_loc
-    use elem_center_interface
     implicit none
     type(t_ice)   , intent(inout), target  :: ice
     type(t_partit), intent(inout), target  :: partit
@@ -436,9 +431,7 @@ subroutine stress2rhs_nc(ice, partit, mesh)
         dx = - 2.0_WP * gradient_sca(1:3,elem)
         dy = - 2.0_WP * gradient_sca(4:6,elem)
 
-        !meancos = metric_factor(elem)
-        call elem_center(elem, x, y, mesh)
-        meancos = sin(y) / cos(y) / r_earth
+        meancos = metric_factor(elem)
 
         if (ice_el(elem)) then
             do k = 1, 3
@@ -609,7 +602,6 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     use g_comm_auto
     use mod_nc_stabilization_loc
     use ice_mEVP_nc_interfaces
-    use elem_center_interface
     implicit none
     type(t_ice)   , intent(inout), target  :: ice
     type(t_partit), intent(inout), target  :: partit
@@ -654,10 +646,7 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
         
         usum = sum(u_ice_aux(eledges))
         vsum = sum(v_ice_aux(eledges))
-
-        !meancos = metric_factor(elem)
-        call elem_center(elem, x, y, mesh)
-        meancos = sin(y) / cos(y) / r_earth
+        meancos = metric_factor(elem)
 
         eps11 = sum(dx * u_ice_aux(eledges))
         eps11 = eps11 - val3 * vsum * meancos               ! metrics
