@@ -547,7 +547,6 @@ subroutine communication_edgen(partit, mesh)
   integer, pointer         :: rptr(:), sptr(:)
   integer, pointer         :: rlist(:), slist(:)
   ! ==========
-
 #include "associate_part_def.h"
 #include "associate_mesh_ini.h"
 #include "associate_part_ass.h"
@@ -558,8 +557,6 @@ subroutine communication_edgen(partit, mesh)
    sPE      => com_edge2D%sPE
    rptr     => com_edge2D%rptr
    sptr     => com_edge2D%sptr
-   rlist    => com_edge2D%rlist
-   slist    => com_edge2D%slist
 
    ! Find communication rules for edge exchange
    ! Assume we have 2D partitioning vector in part:
@@ -596,9 +593,9 @@ subroutine communication_edgen(partit, mesh)
             if (part(edges(1,edge)) /= mype .and. part(edges(2,edge)) /= mype) then
                ! check if the edge is still not collected
                if (recv_from_pe(edge) == -1) then
-                  ! smallest PE that owns a node of the edge
-                  np = min(part(edges(1,edge)), part(edges(2,edge)))
-                  num_recv(np) = num_recv(np) + 1   ! = 1 if an edge is received from PE np
+                  ! only the largest PE that owns a node of the edge sends that edge
+                  np = max(part(edges(1,edge)), part(edges(2,edge)))
+                  num_recv(np) = num_recv(np) + 1   ! = n if n edges are received from PE np
                   recv_from_pe(edge) = np  ! PE from which the edge is received
                end if
             end if
@@ -616,8 +613,8 @@ subroutine communication_edgen(partit, mesh)
             ! check if eledges(k_ed) is in np
             if (part(edges(1,edge)) == np .or. part(edges(2,edge)) == np) cycle
             ! check if eledges(k_ed) is in mype
-            ! use smallest PE that owns a node of the edge so that the edge is not send from two PEs
-            if (mype == min(part(edges(1,edge)), part(edges(2,edge)))) then
+            ! only the largest PE that owns a node of the edge sends that edge
+            if (mype == max(part(edges(1,edge)), part(edges(2,edge)))) then
                do l = 1, MAX_LAENDERECK
                   ! check if the edge is already collected
                   if (send_to_pe(l,edge) == np) then
@@ -642,7 +639,6 @@ subroutine communication_edgen(partit, mesh)
       print *, 'Increase MAX_LAENDERECK in gen_modules_partitioning.F90 and recompile'
       stop
    endif
-
    !! ==========
    !! the number of PEs information is received from/ sent to
    !! ==========
@@ -685,7 +681,7 @@ subroutine communication_edgen(partit, mesh)
    ! ==========
    ! the lists rlist/ slist contain the edges that are received/ sent
    !! ==========
-   allocate(rlist(rptr(rPEnum+1)-1), slist(sptr(sPEnum+1)-1))
+   allocate(com_edge2D%rlist(rptr(rPEnum+1)-1), com_edge2D%slist(sptr(sPEnum+1)-1))
 
    r_count = 0
    s_count = 0
@@ -696,7 +692,7 @@ subroutine communication_edgen(partit, mesh)
       do edge = 1, edge2D
          if (recv_from_pe(edge) == prank) then
             r_count = r_count+1
-            rlist(r_count) = edge
+            com_edge2D%rlist(r_count) = edge
          end if
       end do
    end do
@@ -707,16 +703,13 @@ subroutine communication_edgen(partit, mesh)
       do edge = 1, edge2D
          if (any(send_to_pe(:,edge) == prank)) then
             s_count = s_count+1
-            slist(s_count) = edge
+            com_edge2D%slist(s_count) = edge
          end if
       end do
    end do
 
-   com_edge2D%rlist = rlist
-   com_edge2D%slist = slist
 
    deallocate(recv_from_pe, send_to_pe)
-
 
 end subroutine communication_edgen
 
