@@ -606,7 +606,7 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     real(kind=WP)  :: val3, vale
     real(kind=WP)  :: dx(3), dy(3), usum, vsum
     real(kind=WP)  :: eps11, eps22, eps12, eps1, eps2, pressure, si11, si22, si12
-    real(kind=WP)  :: x, y, meancos
+    real(kind=WP)  :: meancos
     !___________________________________________________________________________
     real(kind=WP), contiguous, dimension(:), pointer  :: rhs_u, rhs_v, u_ice_aux, v_ice_aux
     real(kind=WP), contiguous, dimension(:), pointer  :: ice_strength, delta
