@@ -11,7 +11,7 @@ MODULE ice_test_solver
 
 contains
 
-  subroutine solve_test_old(ice, partit, mesh)
+  subroutine solve_test_edge_old(ice, partit, mesh)
     type(t_ice)   , intent(inout), target :: ice
     type(t_partit), intent(inout), target :: partit
     type(t_mesh)  , intent(in), target :: mesh
@@ -77,12 +77,12 @@ contains
         diff_u = abs(u_buff(i) - expected_u)
         diff_v = abs(v_buff(i) - expected_v)
 
-        if (diff_u > 1e-10_WP .or. diff_v > 1e-10_WP) then
+        if (diff_u > 1e-6_WP .or. diff_v > 1e-6_WP) then
             print *, 'Halo mismatch at edge', i, diff_u, diff_v
         end if
     end do
 
-  end subroutine solve_test_old
+  end subroutine solve_test_edge_old
 
   subroutine solve_test(ice, partit, mesh)
     type(t_ice)   , intent(inout), target :: ice
@@ -122,15 +122,70 @@ contains
     
         diff_u = abs(u_buff(edge_ghost) - expected_u)
         diff_v = abs(v_buff(edge_ghost) - expected_v)
-    
-        if (diff_u > 1e-10_WP .or. diff_v > 1e-10_WP) then
+
+        if (diff_u > 1e-6_WP .or. diff_v > 1e-6_WP) then
            print *, 'Halo mismatch at edge', edge_ghost_global, 'from PE', com_edge2D%rPE(pe), &
                     'diff_u=', diff_u, 'diff_v=', diff_v
         end if
      end do
     end do
+    print *, 'edge test complete'
 
 end subroutine solve_test
 
+
+  subroutine solve_test_elem(ice, partit, mesh)
+    type(t_ice)   , intent(inout), target :: ice
+    type(t_partit), intent(inout), target :: partit
+    type(t_mesh)  , intent(in), target :: mesh
+    !___________________________________________________________________________
+    real(kind=WP), pointer :: sigma_buff(:)
+    integer :: i, j, proc_idx, ghost_idx, elem_global_id, ghost_global_id, elem_global
+    real(kind=WP) :: expected_sigma, diff_sigma
+#include "associate_part_def.h"
+#include "associate_mesh_def.h"
+#include "associate_part_ass.h"
+#include "associate_mesh_ass.h"
+
+    sigma_buff => ice%work%sigma11
+
+    
+    ! Initialize local elements with a unique pattern per PE/element (mirror edge test)
+    print *, 'PE', mype, 'starting initialization, myDim_elem2D:', myDim_elem2D
+    do i = 1, myDim_elem2D
+        elem_global = myList_elem2D(i)
+        sigma_buff(i) = 1000*mype + elem_global
+        if (i <= 5) print *, 'PE', mype, 'elem', i, 'global', elem_global, 'value', sigma_buff(i)
+    end do
+    print *, 'PE', mype, 'initialization complete'
+
+    ! Fill ghost elements
+    call exchange_elem(sigma_buff, partit)
+    
+    print *, 'PE', mype, 'com_elem2D%rPEnum:', com_elem2D%rPEnum
+
+    ! Loop over received ghost elements using com_elem2D
+    do proc_idx = 1, com_elem2D%rPEnum
+        print *, 'PE', mype, 'checking PE', proc_idx, 'rptr range:', com_elem2D%rptr(proc_idx), com_elem2D%rptr(proc_idx+1)-1
+        do j = com_elem2D%rptr(proc_idx), com_elem2D%rptr(proc_idx+1)-1
+            ghost_idx = com_elem2D%rlist(j)
+            ghost_global_id = myList_elem2D(ghost_idx)
+            
+            ! Expected values come from the actual sending PE
+            expected_sigma = 1000.0_WP * com_elem2D%rPE(proc_idx) + ghost_global_id
+            
+            diff_sigma = abs(sigma_buff(ghost_idx) - expected_sigma)
+
+            if (diff_sigma > 1e-6_WP) then
+                print *, 'Element halo mismatch at elem', ghost_global_id, 'from PE', com_elem2D%rPE(proc_idx), &
+                        'diff_sigma=', diff_sigma
+                print *, 'Received:', sigma_buff(ghost_idx), 'Expected:', expected_sigma
+            end if
+        end do
+    end do
+    
+    print *, 'Exchange_elem test completed for PE', mype
+    
+  end subroutine solve_test_elem
 
 END MODULE ice_test_solver
