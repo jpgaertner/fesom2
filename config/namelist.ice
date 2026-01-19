@@ -13,24 +13,6 @@
 ! SEA ICE DYNAMICS
 ! ============================================================================
 &ice_dyn
-<<<<<<< HEAD
-whichEVP=1             ! 0=standart; 1=mEVP; 2=aEVP; 3=test_solver; 4=mEVP_nc; 5=mEVP_div_nc
-Pstar=30000.0          ! [N/m^2]
-ellipse=2.0
-c_pressure=20.0        ! ice concentration parameter used in ice strength computation
-delta_min=1.0e-11      ! [s^(-1)]
-evp_rheol_steps=120    ! number of EVP subcycles
-alpha_evp=250          ! constant that control numerical stability of mEVP. Adjust with resolution. 
-beta_evp=250           ! constant that control numerical stability of mEVP. Adjust with resolution.
-c_aevp=0.15            ! a tuning constant in aEVP. Adjust with resolution.
-Cd_oce_ice=0.0055      ! drag coef. oce - ice 
-ice_gamma_fct=0.5      ! smoothing parameter
-ice_diff=0.0           ! diffusion to stabilize
-theta_io=0.0           ! rotation angle
-ice_ave_steps=1        ! ice step=ice_ave_steps*oce_step
-ice_vplace=0           ! 0 = node placement, 1 = edge placement
-nc_stab=2.5            ! stabilization factor for edge placement
-=======
 ! --- EVP Rheology Options ---
 whichEVP       = 0              ! EVP solver type:
                                 !   0 = standard EVP
