@@ -1,12 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=ref
+#SBATCH --job-name=f_nc_ini
 #SBATCH -p compute
 #SBATCH --ntasks-per-node=1
 #SBATCH --ntasks=1
-#SBATCH --time=01:00:00
-#SBATCH -o slurm-out.out
-#SBATCH -e slurm-err.out
-#SBATCH -A ab0995
+#SBATCH --time=1:00:00
+#SBATCH --output=output_ini.txt
+#SBATCH -A bk1377
 
 source /sw/etc/profile.levante
 source ../env/levante.dkrz.de/shell
