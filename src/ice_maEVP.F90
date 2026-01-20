@@ -892,7 +892,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
 !$OMP ORDERED
 #endif
                     u_rhs_ice(placement(1,el)) = u_rhs_ice(placement(1,el)) - elem_area(el) * &
-                            (sigma11(el) * dx(1,el) + sigma12(el) * (dy(1,el) + meancos))                 !metrics
+                            (sigma11(el) * dx(1,el) + sigma12(el) * dy(1,el) + sigma12(el) * meancos)     !metrics
                     v_rhs_ice(placement(1,el)) = v_rhs_ice(placement(1,el)) - elem_area(el) * &
                             (sigma12(el) * dx(1,el) + sigma22(el) * dy(1,el) - sigma11(el) * meancos)     !metrics
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
@@ -909,7 +909,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
 !$OMP ORDERED
 #endif
                     u_rhs_ice(placement(2,el)) = u_rhs_ice(placement(2,el)) - elem_area(el) * &
-                            (sigma11(el) * dx(2,el) + sigma12(el) * (dy(2,el) + meancos))                 !metrics
+                            (sigma11(el) * dx(2,el) + sigma12(el) * dy(2,el) + sigma12(el) * meancos)     !metrics
                     v_rhs_ice(placement(2,el)) = v_rhs_ice(placement(2,el)) - elem_area(el) * &
                             (sigma12(el) * dx(2,el) + sigma22(el) * dy(2,el) - sigma11(el) * meancos)     !metrics
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
@@ -926,7 +926,7 @@ subroutine EVPdynamics_m(ice, partit, mesh)
 !$OMP ORDERED
 #endif
                     u_rhs_ice(placement(3,el)) = u_rhs_ice(placement(3,el)) - elem_area(el) * &
-                            (sigma11(el) * dx(3,el) + sigma12(el) * (dy(3,el) + meancos))                  !metrics
+                            (sigma11(el) * dx(3,el) + sigma12(el) * dy(3,el) + sigma12(el) * meancos)      !metrics
                     v_rhs_ice(placement(3,el)) = v_rhs_ice(placement(3,el)) - elem_area(el) * &
                             (sigma12(el) * dx(3,el) + sigma22(el) * dy(3,el) - sigma11(el) * meancos)      !metrics
 #if defined(_OPENMP) && !defined(__openmp_reproducible)
