@@ -593,8 +593,8 @@ subroutine communication_edgen(partit, mesh)
             if (part(edges(1,edge)) /= mype .and. part(edges(2,edge)) /= mype) then
                ! check if the edge is still not collected
                if (recv_from_pe(edge) == -1) then
-                  ! only the largest PE that owns a node of the edge sends that edge
-                  np = max(part(edges(1,edge)), part(edges(2,edge)))
+                  ! only the PE that owns the first node of the edge sends that edge
+                  np = part(edges(1,edge))
                   num_recv(np) = num_recv(np) + 1   ! = n if n edges are received from PE np
                   recv_from_pe(edge) = np  ! PE from which the edge is received
                end if
@@ -613,8 +613,8 @@ subroutine communication_edgen(partit, mesh)
             ! check if eledges(k_ed) is in np
             if (part(edges(1,edge)) == np .or. part(edges(2,edge)) == np) cycle
             ! check if eledges(k_ed) is in mype
-            ! only the largest PE that owns a node of the edge sends that edge
-            if (mype == max(part(edges(1,edge)), part(edges(2,edge)))) then
+            ! only the PE that owns the first node of the edge sends that edge
+            if (mype == part(edges(1,edge))) then
                do l = 1, MAX_LAENDERECK
                   ! check if the edge is already collected
                   if (send_to_pe(l,edge) == np) then
