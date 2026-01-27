@@ -725,6 +725,8 @@ subroutine mEVPdynamics_div_nc(ice, partit, mesh)
     rdt = ice%ice_dt
 
 
+    call exchange_nod(bc_index_nod2D, partit)
+
     u_ice_aux = u_ice
     v_ice_aux = v_ice
 
