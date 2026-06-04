@@ -52,11 +52,6 @@ theta_io       = 0.0            ! rotation angle for ice-ocean stress [degrees]
 ice_ave_steps  = 1              ! ice time step = ice_ave_steps × ocean time step
 
 ! --- CR element ---
-ice_vplace = 0                  ! placement of sea ice velocity:
-                                !   0 = node placement, 1 = edge placement
-nc_stab = 2                     ! stabilization factor for the CR element
-
-! --- CR element ---
 ice_vplace = 1                  ! placement of sea ice velocity:
                                 !   0 = node placement, 1 = edge placement
 nc_stab = 2                     ! stabilization factor for the CR element
