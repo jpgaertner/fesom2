@@ -100,7 +100,6 @@ subroutine ice_timestep(step, ice, partit, mesh)
     USE MOD_MESH
     use o_param
     use g_CONFIG
-    use ice_test_solver
     use ice_EVPdynamics_interface
     use ice_maEVPdynamics_interface
     use ice_mEVPdynamics_nc_interface
@@ -222,12 +221,9 @@ subroutine ice_timestep(step, ice, partit, mesh)
         if (flag_debug .and. mype==0)  print *, achar(27)//'[36m'//'     --> call EVPdynamics_a...'//achar(27)//'[0m'
         call EVPdynamics_a(ice, partit, mesh)
     CASE (3)
-        if (flag_debug .and. mype==0)  print *, achar(27)//'[36m'//'     --> call solve_test...'//achar(27)//'[0m'
-        call solve_test(ice, partit, mesh)
-    CASE (4)
         if (flag_debug .and. mype==0)  print *, achar(27)//'[36m'//'     --> call mEVPdynamics_nc...'//achar(27)//'[0m'
         call mEVPdynamics_nc(ice, partit, mesh)
-    CASE (5)
+    CASE (4)
         if (flag_debug .and. mype==0)  print *, achar(27)//'[36m'//'     --> call mEVPdynamics_div_nc...'//achar(27)//'[0m'
         call mEVPdynamics_div_nc(ice, partit, mesh)
     CASE DEFAULT

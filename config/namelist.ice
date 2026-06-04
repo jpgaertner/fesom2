@@ -14,13 +14,12 @@
 ! ============================================================================
 &ice_dyn
 ! --- EVP Rheology Options ---
-whichEVP       = 5              ! EVP solver type:
+whichEVP       = 4              ! EVP solver type:
                                 !   0 = standard EVP
                                 !   1 = modified EVP (mEVP)
                                 !   2 = adaptive EVP (aEVP)
-                                !   3 = test solver
-                                !   4 = mEVP, CR element
-                                !   5 = mEVP, CR element, div stress
+                                !   3 = mEVP, CR element
+                                !   4 = mEVP, CR element, div stress
 
 ! --- Ice Strength Parameters ---
 Pstar          = 30000.0        ! ice strength parameter [N/m²] (typical: 20000-30000)
