@@ -200,12 +200,12 @@ subroutine ice_strength_mass_nc(ice, partit, mesh)
 
         msum = sum(m_ice(elnodes)) * val3
         if (msum > 0.01_WP) then
-            !### Sergey's version
+            !#####
             ice_strength(elem) = ice%pstar * sum(m_ice(elnodes) * exp(-ice%c_pressure * (1.0_WP - a_ice(elnodes)))) * val3
             zeta_e(eledges) = zeta_e(eledges) + 0.5_WP * ice_strength(elem) * elem_area(elem) / ice%ice_dt
             !#####
 
-            !### use this to be consistent with the current Fesom main branch
+            !##### alternative implementation
             !asum = sum(a_ice(elnodes)) * val3
             !ice_strength(elem) = ice%pstar * msum * exp(-ice%c_pressure * (1.0_WP - asum))
             !zeta_e(eledges) = zeta_e(eledges) + 0.5_WP * ice%pstar * sum(m_ice(elnodes) * exp(-ice%c_pressure*(1.0_WP-a_ice(elnodes)))) * val3 * elem_area(elem) / ice%ice_dt
@@ -224,12 +224,12 @@ subroutine ice_strength_mass_nc(ice, partit, mesh)
 
             mmass = 0.5_WP * sum(rhoice * m_ice(edges(:,ed)) + rhosno * m_snow(edges(:,ed)))
 
-            !### Sergey's version
+            !#####
             inv_mass(ed) = 1.0_WP / max(0.1, mmass)
             inv_mass_a(ed) = 0.5_WP * inv_mass(ed) * sum(a_ice(edges(:,ed)))
             !#####
 
-            !### use this to be consistent with the current Fesom main branch
+            !##### alternative implementation
             !a_ice_ed = 0.5_WP * sum(a_ice(edges(:,ed)))
             !inv_mass_a(ed) = mmass / a_ice_ed
             !inv_mass_a(ed) = 1.0_WP / max(inv_mass_a(ed), 9.0_WP)
@@ -452,12 +452,12 @@ subroutine stress2rhs_nc(ice, partit, mesh)
             cluster_area = elem_area(edge_tri(1,row)) * val3
         end if
 
-        !### Sergey's version
+        !#####
         rhs_u(row) = ( rhs_u(row) * inv_mass(row) + gsshx(row) ) / cluster_area
         rhs_v(row) = ( rhs_v(row) * inv_mass(row) + gsshy(row) ) / cluster_area
         !#####
 
-        !### use this to be consistent with the Fesom main branch
+        !##### alternative implementation
         !rhs_u(row) = rhs_u(row) * inv_mass(row) + gsshx(row) / cluster_area
         !rhs_v(row) = rhs_v(row) * inv_mass(row) + gsshy(row) / cluster_area
         !#####
