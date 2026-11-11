@@ -471,6 +471,7 @@ subroutine mEVPdynamics_nc(ice, partit, mesh)
     USE MOD_PARSUP
     USE MOD_MESH
     use g_comm_auto
+    use ice_mEVP_nc_interfaces
     implicit none
     type(t_ice)   , intent(inout), target  :: ice
     type(t_partit), intent(inout), target  :: partit
@@ -596,7 +597,6 @@ subroutine stress_tensor_div_nc(ice, partit, mesh)
     USE MOD_MESH
     use g_comm_auto
     use mod_nc_stabilization_loc
-    use ice_mEVP_nc_interfaces
     implicit none
     type(t_ice)   , intent(inout), target  :: ice
     type(t_partit), intent(inout), target  :: partit
