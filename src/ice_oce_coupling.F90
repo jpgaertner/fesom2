@@ -72,28 +72,26 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
     !___________________________________________________________________________
     integer                  :: n, elem, elnodes(3),n1
     real(kind=WP)            :: aux
-    real(kind=WP), dimension(partit%myDim_nod2D + partit%eDim_nod2D) :: u_ice_loc, v_ice_loc
     !___________________________________________________________________________
     ! pointer on necessary derived types
-    real(kind=WP), dimension(:), pointer  :: a_ice, u_w, v_w
+    real(kind=WP), dimension(:), pointer  :: a_ice, u_ice, v_ice, u_w, v_w
     real(kind=WP), dimension(:), pointer  :: stress_iceoce_x, stress_iceoce_y  
 #include "associate_part_def.h"
 #include "associate_mesh_def.h"
 #include "associate_part_ass.h"
 #include "associate_mesh_ass.h"
+    u_ice           => ice%nc%u_ice_nod
+    v_ice           => ice%nc%v_ice_nod
     a_ice           => ice%data(1)%values(:)
     u_w             => ice%srfoce_u(:)
     v_w             => ice%srfoce_v(:)
     stress_iceoce_x => ice%stress_iceoce_x(:)
     stress_iceoce_y => ice%stress_iceoce_y(:)
 
-    ! ensure that nodal ice velocities are used
+    ! load the right velocities to u/v_ice_nod
     if (ice%ice_vplace == 0) then
-        u_ice_loc = ice%uice
-        v_ice_loc = ice%vice
-    else if (ice%ice_vplace == 1) then
-        u_ice_loc = ice%nc%u_ice_nod
-        v_ice_loc = ice%nc%v_ice_nod
+        u_ice = ice%uice
+        v_ice = ice%vice
     end if
 
     ! ==================
@@ -117,9 +115,9 @@ subroutine oce_fluxes_mom(ice, dynamics, partit, mesh)
         
         !_______________________________________________________________________
         if(a_ice(n)>0.001_WP) then
-            aux=sqrt((u_ice_loc(n)-u_w(n))**2+(v_ice_loc(n)-v_w(n))**2)*density_0*ice%cd_oce_ice
-            stress_iceoce_x(n) = aux * (u_ice_loc(n)-u_w(n))
-            stress_iceoce_y(n) = aux * (v_ice_loc(n)-v_w(n))
+            aux=sqrt((u_ice(n)-u_w(n))**2+(v_ice(n)-v_w(n))**2)*density_0*ice%cd_oce_ice
+            stress_iceoce_x(n) = aux * (u_ice(n)-u_w(n))
+            stress_iceoce_y(n) = aux * (v_ice(n)-v_w(n))
         else
             stress_iceoce_x(n)=0.0_WP
             stress_iceoce_y(n)=0.0_WP
